@@ -69,7 +69,7 @@ Details, firmware quirks and how to add other radios:
 Requires **Python 3.10+**.
 
 ```bash
-git clone https://github.com/<your-account>/textcast.git
+git clone https://github.com/tnnotes/textcast.git
 cd textcast
 python3 -m pip install -r requirements.txt     # pyserial, textual, qrcode (optional)
 python3 -m unittest discover -s tests          # should end with OK
