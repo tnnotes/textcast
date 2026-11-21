@@ -6,6 +6,7 @@ A CB-radio-style **text** network over LoRa. Everyone shares one
 radio channel and everyone can receive everything. What you read is decided on
 your own device: you follow people, join encrypted groups, or just read the
 public channel. There is **no server, no account and no internet connection**.
+<img width="5712" height="4284" alt="IMG_4141" src="https://github.com/user-attachments/assets/07757a41-62e4-4e1f-bef9-98535b1351ed" />
 
 <img width="1352" height="838" alt="Main_application" src="https://github.com/user-attachments/assets/92178b80-c130-4342-9166-1544839bb806" />
 
