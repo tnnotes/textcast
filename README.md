@@ -5,11 +5,7 @@
 A CB-radio-style **text** network over LoRa. Everyone shares one
 radio channel and everyone can receive everything. What you read is decided on
 your own device: you follow people, join encrypted groups, or just read the
-public channel. There is **no server, no account and no internet connection**.
-<img width="5712" height="4284" alt="IMG_4141" src="https://github.com/user-attachments/assets/07757a41-62e4-4e1f-bef9-98535b1351ed" />
-
-<img width="1352" height="838" alt="Main_application" src="https://github.com/user-attachments/assets/92178b80-c130-4342-9166-1544839bb806" />
-
+public channel. There is no server, no account and no internet connection.
 
 > **Built with AI.** This project was designed and written with substantial help
 > from an AI assistant (Claude, by Anthropic). A human directed the work and
@@ -73,7 +69,7 @@ Details, firmware quirks and how to add other radios:
 Requires **Python 3.10+**.
 
 ```bash
-git clone https://github.com/tnnotes/textcast.git
+git clone https://github.com/<your-account>/textcast.git
 cd textcast
 python3 -m pip install -r requirements.txt     # pyserial, textual, qrcode (optional)
 python3 -m unittest discover -s tests          # should end with OK
@@ -156,9 +152,5 @@ docs/                specification, user guide, hardware, security, scaling
 
 MIT, see [LICENSE](LICENSE). Use of radio spectrum is your responsibility under
 your local regulations.
-# Pictures
-<img width="1352" height="838" alt="Screenshot 2026-11-21 at 15 50 13" src="https://github.com/user-attachments/assets/a29d71cf-11e5-436a-a338-c0a7dda32d1b" />
-<img width="1352" height="838" alt="Screenshot 2026-11-21 at 15 49 35" src="https://github.com/user-attachments/assets/7e01515b-2e12-4f45-957f-58b845a1e929" />
-<img width="1352" height="838" alt="Screenshot 2026-11-21 at 15 49 06" src="https://github.com/user-attachments/assets/f87b1d1e-09cc-4ed4-b1ba-b595e9fef9c0" />
-<img width="1352" height="838" alt="Login" src="https://github.com/user-attachments/assets/0553521e-6cb8-469d-8515-5522cebb89a2" />
-
+# textcast
+# textcast
