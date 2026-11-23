@@ -28,7 +28,13 @@ public channel, follow people, or join groups that are encrypted end to end.
 sticks on laptops. The Android app is new: it runs, and testing with modules
 on phones has started. Not field-tested at scale.
 
----
+
+
+<p align="center"><img src="pictures/TextCast_overview.jpg" width="700"></p>
+
+  
+
+
 
 ## Why TextCast
 
@@ -198,6 +204,13 @@ docs/                specification, guides, hardware, security, scaling, releasi
 - The RAK3172 and Wio-E5 profiles come from vendor documentation and have not
   been tested on real modules yet.
 - The user interfaces are tested by hand, not by the automated tests.
+
+
+## Pictures
+<p align="center"><img src="pictures/TextCast_Public_Network_Various_Devices.png" width="700"></p>
+<p align="center"><img src="pictures/TextCast_Group_Demo.png" width="700"></p>
+<p align="center"><img src="pictures/TextCast_Login_Setting_Help.png" width="700"></p>
+
 
 ## License
 
