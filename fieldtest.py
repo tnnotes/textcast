@@ -18,6 +18,7 @@ import threading
 import time
 
 from lora_text import config as CFG
+from lora_text.atradio import make_factory
 from lora_text.la66 import LA66Radio, Packet, TxResult
 from lora_text.protocol import PROFILE, airtime_ms, decode, encode_plain
 from lora_text.storage import PacketLog
@@ -42,7 +43,7 @@ def beacon(a) -> None:
         done.set()
 
     # interval is enforced here; the limiter still protects the contract
-    radio = LA66Radio(a.port, a.baud, on_tx=on_tx, on_log=print, fetch_snr=False)
+    radio = make_factory(a.hw)(a.port, a.baud, on_tx=on_tx, on_log=print, fetch_snr=False)
     radio.open()
     ensure_profile(radio, a.configure)
     seq = 0
@@ -91,8 +92,8 @@ def listen(a) -> None:
         else:
             print(f"[{time.strftime('%H:%M:%S')}] other: {d.display()}")
 
-    radio = LA66Radio(a.port, a.baud, on_packet=on_packet, on_log=print,
-                      fetch_snr=not a.no_snr)
+    radio = make_factory(a.hw)(a.port, a.baud, on_packet=on_packet, on_log=print,
+                               fetch_snr=not a.no_snr)
     radio.open()
     ensure_profile(radio, a.configure)
     print("listening... Ctrl-C for summary")
@@ -120,7 +121,7 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("mode", choices=["beacon", "listen"])
     ap.add_argument("--port", required=True)
-    ap.add_argument("--baud", type=int, default=9600)
+    ap.add_argument("--baud", type=int, help="serial speed (default: from the hardware profile)")
     ap.add_argument("--label", default="node")
     ap.add_argument("--db", default="fieldtest.db")
     ap.add_argument("--configure", action="store_true")

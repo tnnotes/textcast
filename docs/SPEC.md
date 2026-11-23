@@ -5,6 +5,10 @@ channel, everyone receives everything, and all meaning (filtering, identity,
 encryption) is decided by the end applications. The network defines only
 **how to share the air**.
 
+Two implementations follow this specification: the Python core (`lora_text/`)
+and the Kotlin core of the Android app (`android/…/core/`). Cross-language test
+vectors in `android/compat/` keep them byte-compatible.
+
 ## 1. Air profile (mandatory, identical on every node)
 
 The profile is configurable (region presets + manual values, see README and

@@ -23,7 +23,9 @@ import json
 import os
 from typing import Any
 
-from .protocol import PROFILE, AirProfile, airtime_ms, apply_profile, effective_payload
+from . import hardware as HW
+from .protocol import (PROFILE, AirProfile, airtime_ms, apply_profile, effective_payload,
+                       set_hardware_limits)
 from .regions import BW_CODES, DEFAULT_REGION, PRESETS, bw_from_khz
 
 CONFIG_FILE = "config.json"
@@ -34,6 +36,7 @@ DEFAULTS: dict[str, Any] = {
               "cr": None, "power_dbm": None, "preamble": None,
               "max_dwell_ms": "preset", "duty_cycle": "preset"},
     "log": {"max_rows": 20000, "max_days": 30},
+    "hardware": {"type": HW.DEFAULT_HARDWARE},
     "ui": {"port": None, "nick": None},
 }
 
@@ -164,7 +167,27 @@ def describe(p: AirProfile) -> list[str]:
 
 # -- command line -------------------------------------------------------------------
 
+def activate_hardware(name_or_path: str | None) -> HW.HardwareProfile:
+    """Load a hardware profile and apply its payload limits to the active radio
+    profile. Raises ConfigError if unknown/invalid or if the profile becomes unusable."""
+    try:
+        hw = HW.load(name_or_path)
+    except HW.HardwareError as e:
+        raise ConfigError(str(e)) from e
+    set_hardware_limits(hw.max_payload or {"*": 255}, hw.firmware_overhead)
+    p = dataclasses.replace(PROFILE)
+    p.max_payload = effective_payload(p)
+    if p.max_payload < MIN_PAYLOAD:
+        raise ConfigError(f"{hw.name} allows only {p.max_payload} B per message with the "
+                          "current radio settings")
+    apply_profile(p)
+    return hw
+
+
 def add_cli_args(ap: argparse.ArgumentParser) -> None:
+    hg = ap.add_argument_group("hardware")
+    hg.add_argument("--hardware", help=f"module profile: {', '.join(HW.BUILTIN)} "
+                                       "or a .json profile file")
     g = ap.add_argument_group("radio profile (overrides config.json for this run)")
     g.add_argument("--region", help=f"preset: {', '.join(PRESETS)} or custom")
     g.add_argument("--freq", type=float, help="frequency in MHz, e.g. 920.8")
@@ -192,6 +215,16 @@ def from_args(args) -> tuple[AirProfile, dict]:
         v = getattr(args, flag, None)
         if v is not None:
             r[key] = v
+    hw_name = getattr(args, "hardware", None) or cfg["hardware"].get("type")
+    try:
+        hw = HW.load(hw_name)
+    except HW.HardwareError as e:
+        raise ConfigError(str(e)) from e
+    set_hardware_limits(hw.max_payload or {"*": 255}, hw.firmware_overhead)
+    try:
+        args.hw = hw
+    except AttributeError:
+        pass
     log = cfg["log"]
     if getattr(args, "log_max_rows", None) is not None:
         log["max_rows"] = args.log_max_rows

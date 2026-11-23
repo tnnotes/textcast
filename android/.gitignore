@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+compat/out/
+# release signing key and its passwords - never commit
+keystore.properties
+*.jks
+*.keystore

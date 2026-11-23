@@ -1,7 +1,8 @@
 # User guide
 
-How to install, start and use TextCast. See the main [README](../README.md) for an
-overview, and [SPEC.md](SPEC.md) for the protocol.
+How to install, start and use the desktop app (macOS, Windows, Linux). See the
+main [README](../README.md) for an overview, [ANDROID.md](ANDROID.md) for the
+Android app, and [SPEC.md](SPEC.md) for the protocol.
 
 ## Setup
 
@@ -28,23 +29,26 @@ py -m serial.tools.list_ports          :: find the port, e.g. COM5
   `simple_chat.py`; without it, it uses its line mode automatically.
 
 Close any serial terminal (CoolTerm, PuTTY, Arduino monitor) first — only one
-program can hold the port. Baud rate is 9600.
+program can hold the port. The baud rate comes from the module's profile
+(9600 for the LA66).
 
 ## Start
 
 ```bash
 python3 chat.py
 ```
-That's all. A **login panel** opens:
+That's all. A **login panel** opens with just three things:
 
-1. **Identity** — pick yours from the list, or "+ new identity…" and type a nick.
+1. **Identity** — pick yours, or "+ New identity" and type a nick.
 2. **Passphrase** — type it (new identity: choose one, at least 8 characters, typed
-   twice). **If you forget it, the identity cannot be recovered.** Old unprotected
-   identities can be protected here by typing a new passphrase twice.
-   "Lab mode" creates an identity without a passphrase (UNPROTECTED) for bench tests.
-3. **LA66 serial port** — pick it from the list (Refresh after plugging it in) or type it.
-4. **Start.** The app checks the LA66 and applies your radio profile if needed.
-   "Radio settings" opens the radio panel before starting.
+   twice; **it cannot be recovered**). Old unprotected identities can be protected
+   here by typing a new passphrase twice. "No passphrase (lab only)" creates an
+   unprotected identity for bench tests.
+3. **Serial port** — pick it from the list (↻ after plugging it in), or "Other port…"
+   to type it.
+
+Press **Start** (or Enter in any field). **Settings** opens the radio settings,
+including the **radio module** (Dragino LA66 by default), before you start.
 
 The panel remembers your last identity and port. Optional flags pre-fill it:
 `python3 chat.py --nick Tuan --port /dev/cu.usbserial-0001`.
@@ -93,10 +97,11 @@ identities and different dongles; an identity already open elsewhere is refused.
 
 ## Radio settings (region presets or manual)
 
-The LA66 only has to run the P2P firmware; the app sets frequency, SF,
-bandwidth and the rest. **Every node that should talk must use the same settings.**
+The module only needs suitable firmware (the LA66: P2P firmware); the app sets
+frequency, SF, bandwidth and the rest. **Every node that should talk must use the same settings.**
 
-**In the app: F7 (or `/radio`, or "Radio settings" on the login panel).**
+**In the app: F7 (or `/radio`, or "Settings" on the login panel).**
+- *Module*: which radio module you use (see "Radio modules" below).
 - *Region preset*: AS923-1/2/3/4, EU868, US915, AU915, IN865, KR920 fills in all
   values; `custom` lets you set each one.
 - Edit frequency, SF, bandwidth, coding rate, power, preamble, dwell limit, duty
@@ -121,6 +126,13 @@ python3 settings.py set region EU868      # or: set sf 9 | freq 869.5 | bw 250 |
 python3 settings.py reset radio
 python3 chat.py --region EU868 --sf 9     # one session only, not saved
 ```
+
+## Radio modules
+
+The Dragino LA66 is the default. RAK3172 and Seeed Wio-E5 profiles are
+included, and other modules can be added with a JSON profile. Choose the module
+in **Settings → Module**, or `python3 settings.py set hardware NAME`. Details and
+the profile format: [HARDWARE.md](HARDWARE.md).
 
 ## Log size
 
@@ -237,6 +249,8 @@ python3 identity.py show --nick Tuan       # what an identity contains
   computers posting as the same identity at once can reuse encryption nonces.
 - An old backup is safe to restore: counters start from the current time.
 - Keep a backup somewhere safe — losing both file and backup loses the identity.
+- The same `.ltid` file moves an identity to or from the Android app
+  (see [ANDROID.md](ANDROID.md)).
 
 ## Simple chat (fallback without Textual)
 

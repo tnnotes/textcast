@@ -18,6 +18,7 @@
 | Identity file (`keys-<nick>.lkey`) | encrypted with your passphrase (scrypt n=2¹⁵ + ChaCha20 + HMAC) |
 | Message log (`log-<nick>.db`) | for private messages, the text, channel and sender are encrypted |
 | Unattended computer | lock (F5) and auto-lock after 15 idle minutes wipe keys from memory |
+| Android phone | identity and log in the app's private storage, Android backup off for the app; Lock (⋮ menu) wipes keys from memory |
 
 ## What is NOT protected
 
@@ -46,6 +47,19 @@
 - Move an identity to another computer; don't run it on two computers at once
   (that risks nonce reuse).
 - `config.json` (radio settings, last nick and port) is not secret but visible.
+- On Android, anyone who can unlock the phone and open the app sees the chat
+  while TextCast is unlocked. Lock it (⋮ → Lock) when you hand the phone over.
+  A rooted or compromised phone can read the app's memory and files.
+- Share strings sent through other messaging apps are only as private as those
+  apps. For sensitive groups, share them in person.
+
+## Two implementations
+
+The desktop core (Python) and the Android core (Kotlin) implement the same
+cryptography independently. Test vectors generated from the Python code are
+reproduced byte for byte by the Kotlin code, and files and messages made by the
+Kotlin code are opened by the Python code (`android/compat/`). That catches
+format mistakes; it is not a security review of either implementation.
 
 ## Design references
 

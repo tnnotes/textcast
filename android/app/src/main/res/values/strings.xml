@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TextCast</string>
+    <string name="radio_settings">Radio settings</string>
+    <string name="identity">Identity</string>
+    <string name="nick_hint">Nick (1–16 characters)</string>
+    <string name="passphrase">Passphrase</string>
+    <string name="passphrase_again">Passphrase again</string>
+    <string name="lab_mode">No passphrase (lab only)</string>
+    <string name="radio">Radio module</string>
+    <string name="refresh">↻</string>
+    <string name="settings">Settings</string>
+    <string name="start">Start</string>
+    <string name="send">Send</string>
+    <string name="signed">Signed</string>
+    <string name="message_hint">Message</string>
+    <string name="apply">Apply</string>
+    <string name="cancel">Cancel</string>
+    <string name="menu_keys">Keys and groups</string>
+    <string name="menu_add_key">Add a key string…</string>
+    <string name="menu_identity">My identity</string>
+    <string name="menu_contacts">Contacts</string>
+    <string name="menu_lock">Lock</string>
+    <string name="menu_unlock">Unlock</string>
+    <string name="menu_export">Export identity (.ltid)…</string>
+    <string name="menu_passwd">Change passphrase…</string>
+    <string name="menu_disconnect">Log out</string>
+    <string name="notif_channel">Radio connection</string>
+</resources>

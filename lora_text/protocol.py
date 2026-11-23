@@ -44,19 +44,31 @@ class AirProfile:
     duty_cycle: Optional[float] = 0.01      # per device, rolling hour; None = no cap
 
 
-# The Dragino P2P firmware prepends 1 group byte on air (stripped on receive).
+# Bytes the radio firmware adds on air, and its payload limit per SF. Defaults
+# are the Dragino LA66 P2P firmware v1.2.4 (1 group byte; 230/123/59 B);
+# set_hardware_limits() changes them for other hardware.
 FIRMWARE_OVERHEAD = 1
+_LIMIT = {5: 230, 6: 230, 7: 230, 8: 230, 9: 123, 10: 59, 11: 59, 12: 59}
+_LIMIT_DEFAULT = 59
 
-# LA66 P2P firmware v1.2.4 payload limits per spreading factor
+
 def firmware_limit(sf: int) -> int:
-    return 230 if sf <= 8 else 123 if sf == 9 else 59
+    return _LIMIT.get(sf, _LIMIT_DEFAULT)
+
+
+def set_hardware_limits(limits: dict, overhead: int) -> None:
+    """limits: {"7": 230, ...} or {"*": 255} (from a hardware profile)."""
+    global FIRMWARE_OVERHEAD, _LIMIT, _LIMIT_DEFAULT
+    FIRMWARE_OVERHEAD = int(overhead)
+    _LIMIT = {int(k): int(v) for k, v in limits.items() if k != "*"}
+    _LIMIT_DEFAULT = int(limits.get("*", min(_LIMIT.values()) if _LIMIT else 255))
 
 
 def airtime_ms(payload_len: int, p: Optional[AirProfile] = None,
-               firmware_overhead: int = FIRMWARE_OVERHEAD) -> float:
+               firmware_overhead: Optional[int] = None) -> float:
     """Semtech time-on-air formula for one LoRa packet."""
     p = p or PROFILE
-    n = payload_len + firmware_overhead
+    n = payload_len + (FIRMWARE_OVERHEAD if firmware_overhead is None else firmware_overhead)
     tsym = (2 ** p.sf) / p.bw_hz * 1000.0
     de = 1 if tsym > 16.0 else 0
     h = 0 if p.explicit_header else 1

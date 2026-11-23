@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#00796B</color>
+    <color name="text_plain">#212121</color>
+    <color name="text_meta">#757575</color>
+    <color name="text_sealed">#2E7D32</color>
+    <color name="text_signed">#1565C0</color>
+    <color name="text_group">#6A1B9A</color>
+    <color name="text_system">#8D6E63</color>
+    <color name="text_error">#C62828</color>
+    <color name="text_warn">#EF6C00</color>
+    <color name="bubble_me">#1A00796B</color>
+    <color name="input_bg">#FFFFFF</color>
+    <color name="input_stroke">#CFD8DC</color>
+    <color name="composer_bg">#F5F7F8</color>
+    <color name="divider">#DDE3E6</color>
+    <color name="pill_bg">#ECEFF1</color>
+    <color name="chip_on">#B2DFDB</color>
+    <color name="status_bg">#ECEFF1</color>
+    <color name="status_warn_bg">#FFE0B2</color>
+    <color name="status_text">#455A64</color>
+    <color name="sender_0">#00796B</color>
+    <color name="sender_1">#1565C0</color>
+    <color name="sender_2">#6A1B9A</color>
+    <color name="sender_3">#AD1457</color>
+    <color name="sender_4">#EF6C00</color>
+    <color name="sender_5">#2E7D32</color>
+    <color name="sender_6">#4527A0</color>
+    <color name="sender_7">#00838F</color>
+</resources>

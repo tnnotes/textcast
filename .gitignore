@@ -1,0 +1,25 @@
+# personal data - never commit
+keys*.json
+keys*.lkey
+*.ltid
+*.db
+config.json
+# temporary
+*.tmp
+*.lock
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+# Android build output and signing key
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/compat/out/
+android/keystore.properties
+*.jks
+*.keystore
+*.apk
+*.aab

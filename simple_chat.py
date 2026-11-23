@@ -39,6 +39,7 @@ import threading
 import time
 
 from lora_text import config as CFG
+from lora_text.atradio import make_factory
 from lora_text.node import KeyError_, Msg, Node, PayloadTooLong, WrongPassphrase
 from lora_text.protocol import PROFILE, Decoded, matches
 from lora_text.session import resolve, unlock_or_create
@@ -84,6 +85,7 @@ class ChatApp:
                          public_tag=args.public_tag,
                          log_max_rows=args.log_cfg.get("max_rows", 0),
                          log_max_days=args.log_cfg.get("max_days", 0),
+                         radio_factory=make_factory(args.hw),
                          on_msg=self.on_msg, on_update=self.on_update, on_log=self.say)
         self.nick = self.node.handle or self.node.nick
         self.log_cfg = args.log_cfg
@@ -401,7 +403,7 @@ def run_curses(app: ChatApp) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="TextCast chat (LA66 P2P)")
     ap.add_argument("--port", required=True, help="e.g. /dev/cu.usbserial-0001 or COM5")
-    ap.add_argument("--baud", type=int, default=9600)
+    ap.add_argument("--baud", type=int, help="serial speed (default: from the hardware profile)")
     ap.add_argument("--nick", help="your callsign")
     ap.add_argument("--configure", action="store_true",
                     help="apply the air profile to the LA66 before starting")

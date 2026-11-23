@@ -43,8 +43,10 @@ except ImportError:
 
 from lora_text.node import SENSITIVE, KeyError_, Msg, Node, PayloadTooLong, WrongPassphrase
 from lora_text import config as CFG
+from lora_text import hardware as HW
+from lora_text.atradio import make_factory
 from lora_text.la66 import list_ports
-from lora_text.protocol import PROFILE, apply_profile
+from lora_text.protocol import PROFILE, apply_profile, set_hardware_limits
 from lora_text.regions import BW_KHZ, PRESETS
 from lora_text.session import LoginError, list_identities, login, new_identity_path, resolve
 
@@ -359,25 +361,27 @@ class UnlockScreen(ModalScreen):
 # ---------------------------------------------------------------------------
 
 NEW_IDENTITY = "__new__"
+OTHER_PORT = "__other__"
 
 
 class LoginScreen(Screen):
-    """First screen: identity + passphrase + LA66 port."""
+    """First screen: identity, passphrase, serial port. Nothing else."""
 
     def __init__(self, args, error: str = ""):
         super().__init__()
         self.args, self.error = args, error
         self.idents = list_identities()
 
-    def _port_options(self) -> list[tuple[str, str]]:
-        return [(f"{dev}   {desc}".rstrip(), dev) for dev, desc in list_ports()]
+    @staticmethod
+    def _port_options() -> list[tuple[str, str]]:
+        opts = [(f"{dev}   {desc}".rstrip(), dev) for dev, desc in list_ports()]
+        return opts + [("Other port… (type it)", OTHER_PORT)]
 
     def compose(self) -> ComposeResult:
         ui = self.args.cfg.get("ui", {}) if getattr(self.args, "cfg", None) else {}
-        opts = [(f"{d['nick'] or '(no nick)'}   "
-                 f"{'protected' if d['protected'] else 'UNPROTECTED'}", d["path"])
-                for d in self.idents]
-        opts.append(("+ new identity…", NEW_IDENTITY))
+        opts = [(f"{d['nick'] or '(no nick)'}" + ("" if d["protected"] else "   (no passphrase)"),
+                 d["path"]) for d in self.idents]
+        opts.append(("+ New identity", NEW_IDENTITY))
         want = (self.args.nick or ui.get("nick") or "").lower()
         default = next((d["path"] for d in self.idents if (d["nick"] or "").lower() == want),
                        self.idents[0]["path"] if self.idents and not self.args.nick
@@ -388,40 +392,36 @@ class LoginScreen(Screen):
         if want_port and want_port.startswith("/dev/tty.") and \
                 want_port.replace("/dev/tty.", "/dev/cu.") in devs:
             want_port = want_port.replace("/dev/tty.", "/dev/cu.")   # same device on macOS
-        port_kw = {"value": want_port} if want_port in devs else {}
-        with Vertical(classes="dialog", id="login"):
-            yield Static(self._profile_text(), id="login-profile")
-            yield Label("Identity", classes="field-label")
+        if want_port in devs:
+            port_kw, manual = {"value": want_port}, ""
+        elif want_port:
+            port_kw, manual = {"value": OTHER_PORT}, want_port
+        else:
+            port_kw, manual = {}, ""
+        with VerticalScroll(classes="dialog narrow", id="login"):
+            yield Label("Identity", classes="field-label first")
             yield Select(opts, value=default, allow_blank=False, id="ident")
-            yield Input(placeholder="nick for the new identity (1-16 characters, no spaces)",
+            yield Input(placeholder="nick (1-16 characters, no spaces)",
                         value=self.args.nick or "", id="nick")
             yield Label("Passphrase", classes="field-label", id="pw-label")
             yield Input(placeholder="passphrase", password=True, id="pw")
             yield Input(placeholder="repeat the passphrase", password=True, id="pw2")
-            yield Checkbox("Lab mode - no passphrase (UNPROTECTED, bench tests only)", id="lab")
-            yield Static("", id="pw-hint", classes="hint")
-            yield Label("LA66 serial port", classes="field-label")
+            yield Checkbox("No passphrase (lab only)", id="lab")
+            yield Label("Serial port", classes="field-label")
             with Horizontal(id="port-row"):
-                yield Select(ports, prompt="select the LA66 port", id="port", **port_kw)
-                yield Button("Refresh", id="refresh")
-            yield Input(placeholder="…or type it, e.g. /dev/cu.usbserial-0001 or COM5",
-                        value=want_port if want_port and want_port not in devs else "",
+                yield Select(ports, prompt="select the port", id="port", **port_kw)
+                yield Button("↻", id="refresh")
+            yield Input(placeholder="e.g. /dev/cu.usbserial-0001 or COM5", value=manual,
                         id="port-manual")
             yield Static(Text(self.error, style="red"), id="login-error", classes="error")
             with Horizontal(classes="buttons"):
-                yield Button("Radio settings", id="radio")
+                yield Button("Settings", id="radio")
                 yield Button("Quit", id="quit", variant="error")
                 yield Button("Start", id="start", variant="primary")
 
-    @staticmethod
-    def _profile_text() -> Text:
-        p = PROFILE
-        return Text(f"Radio  {p.name} · {p.freq_mhz:.3f} MHz · SF{p.sf} · BW {p.bw_hz / 1000:g} kHz"
-                    f" · max {p.max_payload} B per message", style="grey58")
-
     def on_mount(self) -> None:
         self.query_one("#login").border_title = "TextCast"
-        self.query_one("#login").border_subtitle = "decentralized text broadcast over LoRa P2P"
+        self._update_port()
         self._update_fields()
 
     def _ident(self) -> str:
@@ -440,25 +440,26 @@ class LoginScreen(Screen):
         self.query_one("#pw-label", Label).display = not lab
         pw2.display = (new and not lab) or old_plain
         if old_plain:
-            pw.placeholder = "new passphrase (leave empty to open without one)"
-            pw2.placeholder = "repeat the new passphrase"
-            hint = ("This identity is not protected. Type a passphrase twice to encrypt it "
-                    "now, or leave it empty to open it as it is.")
-        elif new and lab:
-            hint = "Lab mode: anyone with access to this computer can use this identity."
+            pw.placeholder = "set a passphrase to protect it (optional)"
+            pw2.placeholder = "repeat it"
         elif new:
-            pw.placeholder = "choose a passphrase (at least 8 characters)"
-            pw2.placeholder = "repeat the passphrase"
-            hint = "Your passphrase protects your keys. It cannot be recovered if you forget it."
+            pw.placeholder = "choose a passphrase (8+ characters, cannot be recovered)"
+            pw2.placeholder = "repeat it"
         else:
             pw.placeholder = "passphrase"
-            hint = f"Unlocks {ident}."
-        self.query_one("#pw-hint", Static).update(Text(hint, style="grey58"))
         (nick if new and not nick.value else pw).focus()
+
+    def _update_port(self) -> None:
+        v = self.query_one("#port", Select).value
+        self.query_one("#port-manual", Input).display = v == OTHER_PORT
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "ident":
             self._update_fields()
+        elif event.select.id == "port":
+            self._update_port()
+            if event.value == OTHER_PORT:
+                self.query_one("#port-manual", Input).focus()
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         self._update_fields()
@@ -474,14 +475,14 @@ class LoginScreen(Screen):
             self.app.exit()
         elif bid == "refresh":
             self.query_one("#port", Select).set_options(self._port_options())
+            self._update_port()
         elif bid == "radio":
-            self.app.action_radio_settings(after=self._refresh_profile)
-
-    def _refresh_profile(self) -> None:
-        self.query_one("#login-profile", Static).update(self._profile_text())
+            self.app.action_radio_settings()
 
     def _fail(self, msg: str) -> None:
-        self.query_one("#login-error", Static).update(Text(msg, style="red"))
+        err = self.query_one("#login-error", Static)
+        err.update(Text(msg, style="red"))
+        err.scroll_visible()                  # keep the message in view on small screens
 
     def _start(self) -> None:
         ident = self._ident()
@@ -502,11 +503,11 @@ class LoginScreen(Screen):
             self.query_one("#pw2", Input).value = ""
             self._fail(str(e))
             return
-        manual = self.query_one("#port-manual", Input).value.strip()
         sel = self.query_one("#port", Select).value
-        port = manual or (sel if isinstance(sel, str) else "")
+        port = (self.query_one("#port-manual", Input).value.strip() if sel == OTHER_PORT
+                else sel if isinstance(sel, str) else "")
         if not port:
-            self._fail("select the LA66 port (plug it in and press Refresh) or type it")
+            self._fail("choose the serial port (plug the module in, then ↻)")
             return
         self.dismiss({"keys": path, "nick": nick, "passphrase": passphrase, "port": port})
 
@@ -519,9 +520,15 @@ class LoginScreen(Screen):
 class RadioScreen(ModalScreen):
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
-    def __init__(self, fields: dict, log_cfg: dict, status: str = ""):
+    def __init__(self, fields: dict, log_cfg: dict, status: str = "",
+                 hw_id: str = HW.DEFAULT_HARDWARE, connected: bool = False):
         super().__init__()
         self.fields, self.log_cfg, self.status = fields, log_cfg, status
+        self.hw_id, self.connected = hw_id, connected
+        try:
+            self._orig_hw = HW.load(hw_id)
+        except HW.HardwareError:
+            self._orig_hw = HW.load(None)
 
     @staticmethod
     def _row(label: str, widget, unit: str = ""):
@@ -541,6 +548,14 @@ class RadioScreen(ModalScreen):
         with VerticalScroll(classes="dialog wide", id="radio-dialog"):
             if self.status:
                 yield Static(Text(self.status, style="grey58"), classes="hint")
+            yield Label("Module", classes="section-title")
+            hw_opts = [(f"{name}   {desc}", name) for name, desc in HW.available()
+                       if not desc.startswith("invalid")]
+            hw_names = [n for _, n in hw_opts]
+            yield self._row("Radio module", Select(
+                hw_opts, value=self.hw_id if self.hw_id in hw_names else HW.DEFAULT_HARDWARE,
+                allow_blank=False, id="r-hw"))
+            yield Static("", id="r-hw-hint", classes="hint")
             yield Label("Preset", classes="section-title")
             yield self._row("Region", Select(regions, value=f["region"], allow_blank=False,
                                              id="r-region"))
@@ -573,7 +588,29 @@ class RadioScreen(ModalScreen):
                 yield Button("Cancel", id="cancel")
                 yield Button("Apply", id="apply", variant="primary")
 
+    def _selected_hw(self):
+        v = self.query_one("#r-hw", Select).value
+        try:
+            return HW.load(v if isinstance(v, str) else None)
+        except HW.HardwareError:
+            return self._orig_hw
+
+    def _update_hw(self) -> None:
+        hw = self._selected_hw()
+        set_hardware_limits(hw.max_payload or {"*": 255}, hw.firmware_overhead)  # preview
+        text = hw.description + (". " if hw.description else "")
+        text += ("Tested with TextCast." if hw.verified else "Untested with TextCast. " + hw.notes)
+        if self.connected and hw.name != self._orig_hw.name:
+            text += "  A module change takes effect at the next start."
+        self.query_one("#r-hw-hint", Static).update(
+            Text(text, style="grey58" if hw.verified else "yellow"))
+
+    def _restore_limits(self) -> None:
+        set_hardware_limits(self._orig_hw.max_payload or {"*": 255},
+                            self._orig_hw.firmware_overhead)
+
     def on_mount(self) -> None:
+        self._update_hw()
         self.query_one("#radio-dialog").border_title = "Radio settings"
         self.query_one("#radio-preview").border_title = "Result"
         self._preview()
@@ -629,7 +666,9 @@ class RadioScreen(ModalScreen):
             "" if f["duty_cycle"] == "none" else f"{f['duty_cycle'] * 100:g}")
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "r-region" and isinstance(event.value, str) \
+        if event.select.id == "r-hw":
+            self._update_hw()
+        elif event.select.id == "r-region" and isinstance(event.value, str) \
                 and event.value != "custom":
             self._fill(event.value)
         self._preview()
@@ -641,15 +680,20 @@ class RadioScreen(ModalScreen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "apply" and self._preview():
             radio, log = self._collect()
-            self.dismiss({"radio": radio, "log": log})
+            hw = self.query_one("#r-hw", Select).value
+            self._restore_limits()              # the app activates the new module itself
+            self.dismiss({"radio": radio, "log": log,
+                          "hardware": hw if isinstance(hw, str) else self.hw_id})
         elif event.button.id == "preset":
             region = self.query_one("#r-region", Select).value
             self._fill(region if region in PRESETS else "AS923-2")
             self._preview()
         elif event.button.id == "cancel":
+            self._restore_limits()
             self.dismiss(None)
 
     def action_cancel(self) -> None:
+        self._restore_limits()
         self.dismiss(None)
 
 
@@ -763,10 +807,11 @@ class RadioApp(App):
     #pw { margin-top: 1; }
 
     /* login */
-    #login-profile { margin-bottom: 0; }
+    #login { max-height: 98%; scrollbar-size-vertical: 1; }
+    #login .first { margin-top: 0; }
     #port-row { height: auto; }
     #port-row Select { width: 1fr; }
-    #port-row Button { margin-left: 1; }
+    #port-row Button { margin-left: 1; min-width: 5; }
 
     /* radio settings */
     .r-row { height: auto; }
@@ -833,6 +878,12 @@ class RadioApp(App):
         a.keys, a.nick, a.passphrase, a.port = (result["keys"], result["nick"],
                                                 result["passphrase"], result["port"])
         a.db = a.db_arg or resolve(a.nick, a.keys, None)[2]
+        try:
+            a.hw = CFG.activate_hardware(a.hw_id)
+        except CFG.ConfigError as e:
+            self.push_screen(LoginScreen(a, error=f"{e} (open Settings to choose another "
+                                                  "module)"), self._login_done)
+            return
         try:                                       # remember port + identity for next time
             cfg = CFG.load(a.config)
             cfg["ui"] = {"port": a.port, "nick": a.nick}
@@ -846,13 +897,14 @@ class RadioApp(App):
             self.push_screen(LoginScreen(a, error=str(e)), self._login_done)
 
     def _open_node(self) -> None:
-        self.sys(f"Opening {self.args.port}…")
+        self.sys(f"Opening {self.args.port} ({self.args.hw.name})…")
         self.node = Node(self.args.port, self.args.baud, self.args.nick, self.args.keys,
                          self.args.db, fetch_snr=not self.args.no_snr,
                          passphrase=self.args.passphrase,
                          public_tag=self.args.public_tag,
                          log_max_rows=self.args.log_cfg.get("max_rows", 0),
                          log_max_days=self.args.log_cfg.get("max_days", 0),
+                         radio_factory=make_factory(self.args.hw),
                          on_msg=lambda m: self.call_from_thread(self.add_msg, m),
                          on_update=lambda m: self.call_from_thread(self._tx_updated, m),
                          on_log=lambda s: self.call_from_thread(self.sys, s))
@@ -1196,7 +1248,8 @@ class RadioApp(App):
         oldest = (time.strftime("%Y-%m-%d %H:%M", time.localtime(ls["oldest"]))
                   if ls["oldest"] else "-")
         st = self.node.stats()
-        return (f"Now: {PROFILE.name}, {st['airtime_s']:.1f} s on air in the last hour "
+        return (f"Now: {PROFILE.name} on {self.args.hw.name}, "
+                f"{st['airtime_s']:.1f} s on air in the last hour "
                 f"({st['duty']:.2f} %"
                 + (f" of {st['duty_limit']:g} % allowed)" if st["duty_limit"] else ")")
                 + f"\nLog: {ls['rows']:,} messages, {ls['bytes'] / 1024:.0f} KB, oldest {oldest}")
@@ -1207,19 +1260,28 @@ class RadioApp(App):
             if after:
                 after()
         self.push_screen(RadioScreen(CFG.profile_fields(PROFILE), self.args.log_cfg,
-                                     self._radio_status()), done)
+                                     self._radio_status(), self.args.hw_id,
+                                     connected=self.node is not None), done)
 
     def _radio_saved(self, result) -> None:
         if not result:
             return
+        new_hw = result.get("hardware", self.args.hw_id)
+        hw_changed = new_hw != self.args.hw_id
         try:
+            if hw_changed and not self.node:          # not connected yet: switch now
+                self.args.hw = CFG.activate_hardware(new_hw)
+                self.args.hw_id = new_hw
             profile = CFG.build_profile(result["radio"])
             cfg = CFG.load(self.args.config)
             cfg["radio"], cfg["log"] = result["radio"], result["log"]
+            cfg["hardware"] = {"type": new_hw}
             CFG.save(cfg, self.args.config)
         except (CFG.ConfigError, OSError) as e:
             self._notify(str(e), severity="error")
             return
+        if hw_changed and self.node:
+            self.sys(f"radio module set to {new_hw} - it takes effect at the next start")
         self.args.log_cfg = result["log"]
         if not self.node:
             apply_profile(profile)
@@ -1305,7 +1367,7 @@ class RadioApp(App):
 def main() -> None:
     ap = argparse.ArgumentParser(description="TextCast - just run: python3 chat.py")
     ap.add_argument("--port", help="pre-select the LA66 port in the login panel")
-    ap.add_argument("--baud", type=int, default=9600)
+    ap.add_argument("--baud", type=int, help="serial speed (default: from the hardware profile)")
     ap.add_argument("--nick", help="pre-select an identity in the login panel")
     ap.add_argument("--db", help="log file (default log-<nick>.db)")
     ap.add_argument("--configure", action="store_true", help="always re-apply the radio profile")
@@ -1322,6 +1384,8 @@ def main() -> None:
     except CFG.ConfigError as e:
         sys.exit(f"settings error: {e}")
     a.db_arg, a.keys, a.passphrase = a.db, None, None
+    a.hw_id = (a.hardware or a.cfg.get("hardware", {}).get("type")
+               or HW.DEFAULT_HARDWARE)
     app = RadioApp(a)
     try:
         app.run()
