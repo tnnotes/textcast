@@ -2,8 +2,10 @@
 """
 Open, with the Python code, the files the Kotlin test wrote to android/compat/out/
 (run the Kotlin CompatTest with -Dtextcast.compat.out=android/compat/out first).
+The web app's test writes the same files when TEXTCAST_COMPAT_OUT is set:
 
-    python3 android/compat/check_kotlin.py
+    python3 android/compat/check_kotlin.py               # Kotlin files
+    python3 android/compat/check_kotlin.py web/compat/out  # JavaScript files
 """
 
 from __future__ import annotations
@@ -24,6 +26,10 @@ VEC = os.path.join(ROOT, "android", "app", "src", "test", "resources", "vectors.
 
 
 def main() -> int:
+    global OUT
+    if len(sys.argv) > 1:
+        OUT = os.path.abspath(sys.argv[1])
+    who = "JavaScript" if len(sys.argv) > 1 else "Kotlin"
     k = json.load(open(os.path.join(OUT, "kotlin.json"), encoding="utf-8"))
     vec = json.load(open(VEC, encoding="utf-8"))
     fails = 0
@@ -38,29 +44,29 @@ def main() -> int:
         shutil.copy(os.path.join(OUT, "keys-Lan.json"), lan_path)
         lan = K.Keyring(lan_path, me="Lan")
         o = lan.open(bytes.fromhex(k["tuan_group_sealed"]))
-        check("Kotlin group message opens in Python", o is not None and o.text == "từ Android", o)
+        check(f"{who} group message opens in Python", o is not None and o.text == "từ Android", o)
         o = lan.open(bytes.fromhex(k["tuan_news_signed"]))
-        check("Kotlin signed stream message verifies in Python", o is not None and o.text == "signed from Kotlin"
+        check(f"{who} signed stream message verifies in Python", o is not None and o.text == "signed from Kotlin"
               and o.verified, o)
         o = lan.open(bytes.fromhex(k["tuan_join"]))
-        check("Kotlin join announcement opens in Python", o is not None and o.kind == "join", o)
+        check(f"{who} join announcement opens in Python", o is not None and o.kind == "join", o)
 
         # a protected identity created by Kotlin opens in Python
         minh_path = os.path.join(tmp, "keys-Minh.lkey")
         shutil.copy(os.path.join(OUT, "keys-Minh.lkey"), minh_path)
         minh = K.Keyring(minh_path, me="Minh", passphrase="minh-passphrase")
-        check("Kotlin .lkey identity opens in Python", minh.handle == k["minh_handle"], minh.handle)
+        check(f"{who} .lkey identity opens in Python", minh.handle == k["minh_handle"], minh.handle)
         check("same identity string", minh.lid() == k["minh_lid"])
         check("same signed stream string", minh.share("radio") == k["minh_share_radio"])
         check("same group string", minh.share("lab") == k["minh_share_lab"])
         lan.follow(k["minh_share_radio"])                     # signature made in Kotlin verifies here
-        check("Kotlin stream signature verifies in Python", lan.data["follow"]["radio"]["verified"])
+        check(f"{who} stream signature verifies in Python", lan.data["follow"]["radio"]["verified"])
         minh.close(); lan.close()
 
     data = V.unpack(bytes.fromhex(k["vault_blob"]), "kotlin-pass")
-    check("Kotlin vault opens in Python", data == {"me": "K", "n": 5}, data)
+    check(f"{who} vault opens in Python", data == {"me": "K", "n": 5}, data)
     lc = V.LogCipher(bytes.fromhex(vec["logcipher"]["secret"]))
-    check("Kotlin log text decrypts in Python", lc.decrypt(k["logcipher"]) == "ghi log")
+    check(f"{who} log text decrypts in Python", lc.decrypt(k["logcipher"]) == "ghi log")
     print("all good" if not fails else f"{fails} failure(s)")
     return 1 if fails else 0
 

@@ -18,6 +18,7 @@ android/app/build/
 android/local.properties
 android/.idea/
 android/compat/out/
+web/compat/
 android/keystore.properties
 *.jks
 *.keystore

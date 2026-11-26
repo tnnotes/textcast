@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.0
+
+- **Web app** (`web/`, published at https://tnnotes.github.io/textcast/): the
+  whole app in one page that talks to the LoRa stick through the browser (Web
+  Serial). Chrome, Edge and Firefox 151+ on Windows, macOS, Linux and
+  ChromeOS; nothing to install. Same protocol and `.ltid` identity files as the
+  desktop and Android apps: the JavaScript core is checked byte for byte
+  against the Python code in both directions.
+  - Start with no questions: type your name and press Start; the region comes
+    from the time zone; the browser remembers the stick and reconnects when it
+    is plugged back in.
+  - Works offline after the first visit, and installs as an app in Chrome and
+    Edge. `web/index.html` also runs straight from a file.
+  - Groups, streams, contacts, radio settings with a size/airtime preview,
+    passphrase lock, identity export/import, a backup reminder, notifications.
+- Docs: [docs/WEB.md](docs/WEB.md); the README starts with the three ways in
+  (browser, Android, repository).
+
 ## 0.5.0
 
 - **Android app** (Android 5.0+, USB OTG): login, channels, groups, streams,

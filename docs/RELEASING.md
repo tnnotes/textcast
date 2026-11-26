@@ -1,6 +1,36 @@
 # Releasing
 
-How to build the Android APK and publish it on GitHub so people can download it.
+How to publish the web app on GitHub Pages, and how to build the Android APK
+and publish it on GitHub so people can download it.
+
+## The web app (GitHub Pages)
+
+The web app is served from this repository at
+`https://tnnotes.github.io/textcast/`. A GitHub workflow builds `web/` and
+publishes it every time a push changes `web/`.
+
+**Once:**
+
+1. Put the workflow in place (it is kept in `web/deploy/`):
+
+   ```bash
+   mkdir -p .github/workflows
+   cp web/deploy/web-pages.yml .github/workflows/web-pages.yml
+   ```
+
+2. Commit and push it.
+3. On GitHub: **Settings → Pages → Build and deployment → Source: GitHub
+   Actions**.
+4. Watch **Actions**: when the run is green, the app is live.
+
+**Each update:** edit `web/src/`, run `python3 web/build.py`, check it
+(`node --test web/tests/compat.test.js`, then try it in a browser), commit
+and push. Browsers that opened TextCast before pick up the new version by
+themselves (the next time it opens after an online visit). Set `VERSION` in
+`web/build.py` for a release.
+
+# The Android app
+
 
 ## Quick route
 
@@ -93,6 +123,8 @@ python3 -m unittest discover -s tests              # desktop core: ends with OK
 python3 android/compat/make_vectors.py             # only if the protocol changed
 cd android && ./gradlew testDebugUnitTest && cd .. # Kotlin core: byte-exact vs Python
 python3 android/compat/check_kotlin.py             # Python opens what Kotlin made
+node --test web/tests/compat.test.js               # web core: byte-exact vs Python
+python3 web/tests/e2e_browser.py                   # web app in headless Chrome (needs Playwright)
 ```
 
 Run `check_kotlin.py` within a few minutes of the Kotlin tests (message counters

@@ -205,13 +205,6 @@ Other requirements:
 - **Other single-channel modules** with AT commands: a JSON profile is usually
   enough. Boards with custom firmware (Heltec, SX127x + microcontroller) can
   implement a simple AT protocol and use a profile too.
-- **Multi-channel gateways** (SX1302, e.g. Dragino LPS8v2):
-  - The driver talks to the Semtech UDP packet forwarder: it receives `rxpk`
-    and sends `txpk` with `"ipol": false`.
-  - The gateway must use the private sync word (`lorawan_public: false`) and
-    include the profile's frequency and SF in its channel plan.
-  - The gateway then stops serving LoRaWAN, and cannot receive while
-    transmitting.
 - **iPhones:** a Bluetooth LE bridge (e.g. ESP32 + LA66 over UART) with an app
   speaking BLE. Android already works over USB OTG.
 - **Custom LA66 firmware** (ASR6601 SDK): could add listen-before-talk, a rate
