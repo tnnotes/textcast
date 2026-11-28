@@ -27,4 +27,7 @@
     <color name="sender_5">#2E7D32</color>
     <color name="sender_6">#4527A0</color>
     <color name="sender_7">#00838F</color>
+    <color name="bubble_them">#FFFFFF</color>
+    <color name="bubble_mine">#D9F2EC</color>
+    <color name="chat_wall">#ECEFF1</color>
 </resources>

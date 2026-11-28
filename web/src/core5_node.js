@@ -259,13 +259,25 @@ class Node {
     this.log = new MessageLog(store, logName, logSaveDelayMs);
     this.logMaxRows = logMaxRows; this.logMaxDays = logMaxDays;
     this.inserts = 0; this.pending = new Map();
+    this.awaiting = new Map(); this.acks = new Map(); this.seenDm = new Map(); this.timers = new Set();
     this.onMsg = () => {}; this.onUpdate = () => {}; this.onLog = () => {};
+    this.lookups = new Map(); this.parts = new Map(); this.lastAnswer = 0;
+    this.onLookup = () => {};             // {number, status: found|conflict|notfound, nick, handle}
     this.radio = null; this.firmware = "?"; this.publicTag = false;
     this.pruneLog();
     this.processPending();
   }
   static READ_ONLY = new Set(["follow", "other"]);
-  static SENSITIVE = new Set(["sealed", "signed", "join"]);
+  static SENSITIVE = new Set(["sealed", "signed", "join", "direct"]);
+  static RECEIPT_WAIT = 30;            // s after sending: no receipt -> 'unconfirmed'
+  static RECEIPT_DELAY = [1, 4];       // s before confirming a direct message (random)
+  static RESEND_SAME = 1800;           // s: a resent text already shown is not shown again
+  static STATUS_CODE = { failed: 0, sent: 1, delivered: 2, unconfirmed: 3 };
+  static LOOKUP_WAIT = 10;             // s to wait for answers to "who has this number?"
+  static LOOKUP_RETRY = 4;             // s: ask once more if nobody answered yet
+  static ANSWER_DELAY = [0.3, 1.5];    // s before answering a lookup for my number
+  static ANSWER_GAP = 3;               // s: answer at most this often
+  static QUIET = new Set(["receipt", "lookup"]);
 
   get nick() { return this.keys.me; }
   get handle() { return this.keys.handle; }
@@ -273,6 +285,9 @@ class Node {
   get callsign() { return this.publicTag && this.handle ? this.handle : this.nick; }
 
   async start(radio, { configure = false, autoApply = true } = {}) {
+    // the airtime count and rate limit survive unplugging: a replug must not reset the duty cycle
+    if (this.meter) { radio.meter = this.meter; radio.limiter = this.limiter; }
+    else { this.meter = radio.meter; this.limiter = radio.limiter; }
     this.radio = radio;
     radio.onPacket = (p) => this._onPacket(p);
     radio.onTx = (r) => this._onTx(r);
@@ -293,23 +308,43 @@ class Node {
     await r.pause();
     try { Protocol.applyProfile(p); return await r.configure(); } finally { r.resume(); }
   }
-  async detachRadio() { const r = this.radio; this.radio = null; if (r) await r.close(); }
-  async stop() { await this.detachRadio(); this.keys.close(); this.log.flush(); }
+  async detachRadio() {
+    const r = this.radio; this.radio = null;
+    // frames still waiting fail now (sealed frames carry a time-based counter: sending
+    // them much later would be refused); the user resends once the radio is back
+    for (const [job, m] of this.pending) {
+      this.pending.delete(job);
+      if (m.status === "queued") { m.status = "failed"; if (m.row) this.log.setTxOk(m.row, false); this.onUpdate(m); }
+    }
+    if (r) await r.close();
+  }
+  async stop() { for (const t of this.timers) clearTimeout(t); await this.detachRadio(); this.keys.close(); this.log.flush(); }
+  _later(s, fn) {
+    const t = setTimeout(() => { this.timers.delete(t); try { fn(); } catch (e) { this.onLog(e.message); } }, s * 1000);
+    this.timers.add(t);
+  }
   pruneLog() { return this.log.prune(this.logMaxRows, this.logMaxDays); }
   _logged() { if (++this.inserts % 200 === 0) this.pruneLog(); }
 
   // -- channels --------------------------------------------------------------------------
   channels() {
     if (this.keys.locked) return [["all", "all"], ["public", "public"], ["other", "other"]];
-    return [["all", "all"], ["public", "public"], ...this.keys.groups().map((g) => [g, "group"]),
+    return [["all", "all"], ["public", "public"], ...this.keys.directContacts().map(([h]) => ["@" + h, "direct"]),
+      ...this.keys.groups().map((g) => [g, "group"]),
       ...this.keys.own().map((g) => [g, "own"]), ...this.keys.followed().map((g) => [g, "follow"]), ["other", "other"]];
   }
   channelType(ch) { const c = this.channels().find((x) => x[0] === ch); return c ? c[1] : "other"; }
   canSend(ch) { return !Node.READ_ONLY.has(this.channelType(ch)); }
+  channelTitle(ch) {
+    if (!ch.startsWith("@")) return ch;
+    const c = this.locked ? null : this.keys.directContacts().find(([h]) => "@" + h === ch);
+    return c ? c[1] : ch.slice(1);
+  }
   byteCount(ch, text) {
     if (!text.trim()) return 0;
-    return ["group", "own"].includes(this.channelType(ch))
-      ? Bytes.utf8(Protocol.normalize(text.trim())).length + Crypto.FRAME_OVERHEAD
+    const t = this.channelType(ch);
+    return ["group", "own", "direct"].includes(t)
+      ? Bytes.utf8(Protocol.normalize(text.trim())).length + Crypto.FRAME_OVERHEAD + (t === "direct" ? 1 : 0)
       : Protocol.frameLenPlain(Protocol.compose(text, this.callsign));
   }
   get maxBytes() { return Protocol.profile.maxPayload; }
@@ -320,7 +355,8 @@ class Node {
     if (!r) throw new KeyException("not connected to a radio");
     const ctype = this.channelType(channel), text = text0.trim();
     if (Node.READ_ONLY.has(ctype)) throw new KeyException(`'${channel}' is read-only - switch to public, a group or your own stream`);
-    if (this.locked && (ctype === "group" || ctype === "own")) throw new LockedException("identity is locked - unlock first");
+    if (this.locked && ["group", "own", "direct"].includes(ctype)) throw new LockedException("identity is locked - unlock first");
+    if (ctype === "direct") return this._sendDirect(channel, text);
     let frame, kind;
     if (ctype === "group" || ctype === "own") { frame = this.keys.sealFor(channel, text, signed); kind = signed ? "signed" : "sealed"; }
     else { frame = Protocol.encodePlain(Protocol.compose(text, this.callsign)); kind = "plain"; }
@@ -333,6 +369,58 @@ class Node {
     this._logged();
     this.pending.set(job, m);
     return m;
+  }
+  _sendDirect(channel, text) {
+    const peer = channel.slice(1);
+    const [frame, i] = this.keys.sealDirect(peer, text);
+    const job = this.radio.send(frame);
+    const m = { ts: Crypto.nowSeconds(), direction: "tx", kind: "direct", channel, sender: this.handle || this.nick || "me",
+                text, size: frame.length, job, status: "queued", airtime: Protocol.airtimeMs(frame.length), verified: true,
+                group: false, rssi: null, snr: null, peer, dmId: dmId(i) };
+    const [ch, snd] = this._logMeta(m);
+    m.row = this.log.add("tx", frame, "direct", this._logText(m), null, null, m.airtime, m.ts, ch, snd);
+    this._logged();
+    this.pending.set(job, m);
+    return m;
+  }
+  // Send a direct message again (no receipt came): the receiver doesn't show it twice
+  resend(m) {
+    if (m.kind !== "direct" || m.direction !== "tx" || !m.peer) throw new KeyException("only direct messages can be resent");
+    if (!this.radio) throw new KeyException("not connected to a radio");
+    if (m.status === "queued" || m.status === "delivered") return m;
+    const [frame, i] = this.keys.sealDirect(m.peer, m.text, true);
+    m.job = this.radio.send(frame); m.dmId = dmId(i); m.status = "queued";
+    this.pending.set(m.job, m);
+    this.onUpdate(m);
+    return m;
+  }
+  _setStatus(m, status) {
+    m.status = status;
+    if (m.row) this.log.setStatus(m.row, Node.STATUS_CODE[status]);
+    this.onUpdate(m);
+  }
+  _confirm(peer, id) {
+    const key = peer.toLowerCase();
+    if (!this.acks.has(key)) this.acks.set(key, { peer, ids: [] });
+    const a = this.acks.get(key);
+    if (!a.ids.includes(id)) a.ids.push(id);
+    if (a.ids.length === 1) {
+      const [lo, hi] = Node.RECEIPT_DELAY;
+      this._later(lo + Math.random() * (hi - lo), () => this._sendReceipts(key));
+    }
+  }
+  _sendReceipts(key) {
+    const a = this.acks.get(key); this.acks.delete(key);
+    if (!a || !a.ids.length || this.locked || !this.radio) return;
+    for (let k = 0; k < a.ids.length; k += 4) this.radio.send(this.keys.makeReceipt(a.peer, a.ids.slice(k, k + 4)));
+  }
+  _onReceipt(m) {
+    for (const id of m.acks) {
+      const k = `${m.peer.toLowerCase()}|${id}`;
+      const sent = this.awaiting.get(k);
+      this.awaiting.delete(k);
+      if (sent && sent.status !== "delivered") this._setStatus(sent, "delivered");
+    }
   }
   announce(group) {
     const r = this.radio;
@@ -348,13 +436,90 @@ class Node {
     const m = this.pending.get(r.jobId);
     if (!m) return;
     this.pending.delete(r.jobId);
+    if (m.kind === "direct" && r.ok) {
+      const id = m.dmId;
+      this.awaiting.set(`${m.peer.toLowerCase()}|${id}`, m);
+      this._later(Node.RECEIPT_WAIT, () => { if (m.status === "sent" && m.dmId === id) this._setStatus(m, "unconfirmed"); });
+    }
+    if (m.status === "delivered") return;            // a receipt for an earlier copy came first
     m.status = r.ok ? "sent" : "failed";
     if (m.row) this.log.setTxOk(m.row, r.ok);
     this.onUpdate(m);
   }
 
+  // -- TextCast numbers --------------------------------------------------------------------
+  get number() { return this.keys.number; }
+  // Ask nearby devices "who has this number?". Returns {status: 'known'|'searching'};
+  // the result arrives through onLookup. Throws NumberException.
+  lookup(text) {
+    const number = Numbers.parse(text);
+    if (number === this.keys.number) throw new NumberException("that is your own number");
+    const c = this.locked ? null : this.keys.contactByNumber(number);
+    if (c) return { number, status: "known", name: c.name, handle: c.handle, channel: "@" + c.handle };
+    if (!this.radio) throw new KeyException("not connected to a radio");
+    this.lookups.set(number, { found: new Map() });
+    this.radio.send(Numbers.makeLookup(number));
+    this._later(Node.LOOKUP_RETRY, () => {
+      const st = this.lookups.get(number);
+      if (st && !st.found.size && this.radio) this.radio.send(Numbers.makeLookup(number));
+    });
+    this._later(Node.LOOKUP_WAIT, () => {
+      const st = this.lookups.get(number);
+      if (st && !st.found.size) { this.lookups.delete(number); this.onLookup({ number, status: "notfound" }); }
+    });
+    return { number, status: "searching" };
+  }
+  addFound(number, name = null) {
+    const st = this.lookups.get(number);
+    if (!st || st.found.size !== 1) throw new KeyException("nobody (or more than one key) answered for that number");
+    const [pubHex, nick] = [...st.found.entries()][0];
+    const pub = Bytes.unhex(pubHex);
+    this.keys.addFound(pub, nick, number, name);
+    this.lookups.delete(number);
+    return "@" + Ids.makeHandle(nick, pub);
+  }
+  setFindable(on) { this.keys.setFindable(on); }
+  _onDirectory(pkt) {
+    const d = Numbers.parseFrame(pkt.payload);
+    if (!d) return;
+    const now = Crypto.nowSeconds();
+    if (d.op === "lookup") {
+      if (d.number === this.keys.number && this.keys.findable && this.nick && this.radio && now - this.lastAnswer > Node.ANSWER_GAP) {
+        this.lastAnswer = now;
+        const [lo, hi] = Node.ANSWER_DELAY;
+        this._later(lo + Math.random() * (hi - lo), () => {
+          if (!this.radio) return;
+          for (const f of Numbers.makeAnswer(this.keys.pub, this.nick, Math.floor(Math.random() * 256), Protocol.profile.maxPayload))
+            this.radio.send(f);
+        });
+      }
+      return;
+    }
+    for (const [k, v] of this.parts) if (now - v.t > 30) this.parts.delete(k);
+    let st = this.parts.get(d.id);
+    if (!st || st.n !== d.parts) { st = { t: now, n: d.parts, chunks: new Map() }; this.parts.set(d.id, st); }
+    st.chunks.set(d.part, d.chunk);
+    if (st.chunks.size < d.parts) return;
+    this.parts.delete(d.id);
+    const data = Bytes.concat(...Array.from({ length: d.parts }, (_, j) => st.chunks.get(j)));
+    if (data.length < 33 || !this.lookups.size) return;
+    const pub = data.slice(0, 32), nick = Bytes.utf8Lenient(data.slice(32));
+    const number = Numbers.numberOf(pub);
+    const look = this.lookups.get(number), key = Bytes.hex(pub);
+    if (!look || look.found.has(key)) return;
+    look.found.set(key, nick);
+    if (look.found.size === 1) this.onLookup({ number, status: "found", nick, handle: Ids.makeHandle(nick, pub) });
+    else this.onLookup({ number, status: "conflict", nick: [...look.found.values()].join(", ") });
+  }
+
   // -- receiving ---------------------------------------------------------------------------
   _onPacket(pkt) {
+    if (Numbers.isDirectory(pkt.payload)) {
+      this.log.add("rx", pkt.payload, "lookup", null, pkt.rssi, pkt.snr, null, pkt.t);
+      this._logged();
+      this._onDirectory(pkt);
+      return;
+    }
     if (this.locked && Protocol.decode(pkt.payload).kind === "reserved") {
       const row = this.log.add("rx", pkt.payload, "pending", null, pkt.rssi, pkt.snr, null, pkt.t);
       this._logged();
@@ -364,6 +529,18 @@ class Node {
       return;
     }
     const m = this.classify(pkt);
+    if (m.kind === "receipt") {
+      this.log.add("rx", pkt.payload, "receipt", null, pkt.rssi, pkt.snr, null, pkt.t);
+      this._logged();
+      this._onReceipt(m);
+      return;
+    }
+    if (m.kind === "direct") {
+      if (this.radio) this._confirm(m.peer, m.dmId);
+      const key = `${m.peer.toLowerCase()}|${m.text}`, now = Crypto.nowSeconds();
+      if (m.resent && now - (this.seenDm.get(key) || 0) < Node.RESEND_SAME) return;   // shown already: just confirm
+      this.seenDm.set(key, now);
+    }
     const [ch, snd] = this._logMeta(m);
     m.row = this.log.add("rx", pkt.payload, m.kind, this._logText(m), pkt.rssi, pkt.snr, null, pkt.t, ch, snd);
     this._logged();
@@ -387,6 +564,12 @@ class Node {
     }
     if (d.kind === "reserved") {
       const op = this.keys.open(pkt.payload);
+      if (op && op.kind === "direct") {
+        const peer = op.source.slice(1);
+        if (op.inner === "receipt") return Object.assign(mk("receipt", op.source, op.sender, "", true), { peer, acks: op.acks });
+        return Object.assign(mk("direct", op.source, op.sender, Protocol.clean(op.text), true),
+                             { peer, dmId: dmId(op.counter), resent: op.inner === "resend" });
+      }
       if (op) {
         if (op.group) return mk(op.kind, op.source, op.sender, Protocol.clean(op.text), false, true);
         const name = op.verified ? this.keys.display(op.sender, op.pub) : op.sender;
@@ -424,6 +607,7 @@ class Node {
   history(n = 300) {
     const out = [], c = this.cipher;
     for (const r of this.log.list(n)) {
+      if (Node.QUIET.has(r.kind)) continue;
       let { text, channel, sender } = r;
       if ([text, channel, sender].some((x) => typeof x === "string" && x.startsWith(LogCipher.PREFIX))) {
         if (!c) continue;
@@ -434,10 +618,11 @@ class Node {
       if (text === null || text === undefined) text = Protocol.decode(payload).display();
       let flag = "u", name = sender;
       if (sender && sender.length > 1 && sender[1] === ":" && "gvu".includes(sender[0])) { flag = sender[0]; name = sender.slice(2); }
-      const status = r.dir === "tx" ? (r.tx_ok === 1 ? "sent" : r.tx_ok === 0 ? "failed" : "unknown") : null;
+      const status = r.dir === "tx" ? ({ 0: "failed", 1: "sent", 2: "delivered", 3: "unconfirmed" }[r.tx_ok] || "unknown") : null;
       out.push({ ts: r.ts, direction: r.dir, kind: r.kind || "plain", channel: channel || (r.kind === "plain" ? "public" : "other"),
                  sender: name, text, rssi: r.rssi, snr: r.snr, size: payload.length, status, airtime: r.airtime_ms,
-                 verified: flag === "v", group: flag === "g", row: r.id });
+                 verified: flag === "v", group: flag === "g", row: r.id,
+                 peer: channel && channel.startsWith("@") ? channel.slice(1) : undefined });
     }
     return out;
   }

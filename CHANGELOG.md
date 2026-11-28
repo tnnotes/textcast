@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.7.0
+
+- **Looks like a phone messenger** in all three apps: a chat list (Public
+  first, then people and groups with the last message and an unread count)
+  and the open chat with your messages on the right. On narrow screens one at
+  a time with ← back. Radio settings, the radio log and channels moved to
+  Settings → Advanced. The Android app has a new home screen (chat list with a
+  round + button).
+- **Private chats** with one person, end-to-end encrypted with a key both
+  sides compute from their Ed25519 identity keys. **Delivery receipts:**
+  ✓ sent → ✓✓ delivered; *not delivered · Resend* after 30 s. A resend is never
+  shown twice. On air a private message looks like any other sealed packet.
+- **TextCast numbers:** every identity has a 10-digit number (`512 384 9076`)
+  computed from its key: a slow scrypt hash plus a check digit, no server.
+  **＋ New chat** asks over the radio "who has this number?"; the owner's device
+  answers with its key, which is checked against the number. Typos are caught
+  before sending; two keys for one number are refused with a warning.
+  "Let people find me by my number" can be switched off. Contacts show
+  *✓ verified* (identity string) or *added by number*.
+- **Plug the radio in any time:** log in without it (read chats, set things
+  up); the app finds the stick when it is plugged in and reconnects by itself
+  after unplugging, in all three apps. Frames waiting to be sent when the stick
+  is unplugged fail (and can be resent) instead of going out later with a stale
+  counter. The duty-cycle count is kept across a replug.
+- The terminal app is `chat.py` only (`simple_chat.py` and `tui.py` are gone).
+  Keys: Ctrl+N new chat, F2 settings, F3 chat info, F8 resend.
+- Protocol: new direct-message inner types (text, resend, receipt) and the
+  DIRECTORY frame type for number lookups ([docs/SPEC.md](docs/SPEC.md)).
+  Older apps show them as sealed packets they can't open.
+
 ## 0.6.0
 
 - **Web app** (`web/`, published at https://tnnotes.github.io/textcast/): the

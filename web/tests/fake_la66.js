@@ -18,7 +18,7 @@
       lines("rxDone", "Data: (HEX:) " + spaced(hex.toUpperCase()), `Rssi= ${rssi}`);
     },
     unplug() { plugged = false; try { ctrl.error(new Error("device lost")); } catch (e) {} fire("disconnect"); },
-    plug() { plugged = true; fire("connect"); },
+    plug(event = true) { plugged = true; if (event) fire("connect"); },
   };
   function handle(cmd) {
     api.cmds.push(cmd);
@@ -67,7 +67,7 @@
   const serial = {
     addEventListener(type, f) { (listeners[type] || (listeners[type] = [])).push(f); },
     removeEventListener() {},
-    async requestPort() { plugged = true; granted = true; sessionStorage.setItem("fakeGranted", "1"); api.picker++; return port; },
+    async requestPort() { if (api.denyPicker) throw new DOMException("No port selected", "NotFoundError"); plugged = true; granted = true; sessionStorage.setItem("fakeGranted", "1"); api.picker++; return port; },
     async getPorts() { return granted && plugged ? [port] : []; },
   };
   api.picker = 0;

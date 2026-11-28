@@ -38,9 +38,14 @@
         </activity>
 
         <activity
+            android:name=".app.ChatsActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
+
+        <activity
             android:name=".app.ChatActivity"
             android:exported="false"
-            android:launchMode="singleTask"
+            android:parentActivityName=".app.ChatsActivity"
             android:windowSoftInputMode="adjustResize" />
 
         <activity

@@ -62,7 +62,7 @@ class LoginActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (session.node != null) { session.openChat(this); finish(); return }
+        if (session.node != null) { session.reattach(); session.openChat(this); finish(); return }
         setContentView(R.layout.activity_login)
         identity = findViewById(R.id.identity)
         nick = findViewById(R.id.nick)
@@ -114,7 +114,7 @@ class LoginActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (session.node != null) { session.openChat(this); finish() }
+        if (session.node != null) { session.reattach(); session.openChat(this); finish() }
     }
 
     // -- lists -------------------------------------------------------------------------
@@ -131,7 +131,7 @@ class LoginActivity : Activity() {
 
     private fun refreshDevices() {
         devices = try { session.usbChoices() } catch (e: Exception) { emptyList() }
-        val names = devices.map { it.label } + listOf("Offline (no radio)")
+        val names = devices.map { it.label } + listOf("Connect later (plug it in anytime)")
         device.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
         val last = (session.config()["ui"] as? Map<*, *>)?.get("port") as? String
         val idx = devices.indexOfFirst { it.key == last }
@@ -228,7 +228,7 @@ class LoginActivity : Activity() {
             r.onSuccess {
                 val cfg = session.config()
                 @Suppress("UNCHECKED_CAST")
-                (cfg["ui"] as MutableMap<String, Any?>).apply { put("nick", p.nick); put("port", p.usb?.key) }
+                (cfg["ui"] as MutableMap<String, Any?>).apply { put("nick", p.nick); p.usb?.key?.let { put("port", it) } }
                 session.saveConfig(cfg)
                 pass.setText(""); pass2.setText("")
                 session.openChat(this)

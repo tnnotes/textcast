@@ -57,8 +57,13 @@ class PacketLog:
             return cur.lastrowid
 
     def set_tx_ok(self, row_id: int, ok: bool) -> None:
+        self.set_status(row_id, int(ok))
+
+    # tx_ok holds the status of a sent message: 0 not sent, 1 sent,
+    # 2 delivered (receipt), 3 not confirmed (direct message, no receipt)
+    def set_status(self, row_id: int, code: int) -> None:
         with self._lock:
-            self._db.execute("UPDATE packets SET tx_ok=? WHERE id=?", (int(ok), row_id))
+            self._db.execute("UPDATE packets SET tx_ok=? WHERE id=?", (code, row_id))
             self._db.commit()
 
     def update(self, row_id: int, kind: str, text: str | None,

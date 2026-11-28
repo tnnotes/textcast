@@ -190,6 +190,46 @@ def main() -> None:
                             "counter": o.counter, "group": o.group, "verified": o.verified}
         v["keyring"]["expected"] = exp
 
+        # direct messages: Tuan and Lan hold each other's identity strings
+        lan.add_contact(tuan.lid(), "Anh Tuấn")
+        tuan2 = K.Keyring(os.path.join(tmp, "keys-Tuan.json"), me="Tuan")
+        dm_text, i_text = lan.seal_direct(tuan.handle, "gặp nhau lúc 7 giờ")
+        dm_resend, i_resend = lan.seal_direct(tuan.handle, "gặp nhau lúc 7 giờ", resend=True)
+        dm_receipt = lan.make_receipt(tuan.handle, [123456789012, 42])
+        with open(lan.path, encoding="utf-8") as f:
+            lan_json2 = f.read()
+        with open(tuan.path, encoding="utf-8") as f:
+            tuan_json2 = f.read()                    # before Tuan opens anything (counters)
+        exp_dm = {}
+        for name, fr in (("text", dm_text), ("resend", dm_resend), ("receipt", dm_receipt)):
+            o = tuan2.open(fr)
+            exp_dm[name] = {"kind": o.kind, "source": o.source, "sender": o.sender, "text": o.text,
+                            "inner": o.inner, "acks": list(o.acks), "counter": o.counter}
+        seed_t = K.unb32(json.loads(open(tuan.path, encoding="utf-8").read())["id_seed"])
+        v["direct"] = {
+            "lan_json": lan_json2, "tuan_json": tuan_json2,
+            "shared": h(ed25519.shared_point(seed_t, lan.pub)),
+            "frames": {"text": h(dm_text), "resend": h(dm_resend), "receipt": h(dm_receipt)},
+            "expected": exp_dm, "t": time.time(),
+            "bad_keys": [h((1).to_bytes(32, "little")), "ff" * 32],
+        }
+        tuan2.close()
+
+        # TextCast numbers and number lookup frames
+        from lora_text import numbers as NB
+        pubs = [bytes(32), bytes(range(32)), tuan.pub, lan.pub]
+        v["numbers"] = {
+            "keys": [{"pub": h(p), "number": NB.number_of(p), "shown": NB.format_number(NB.number_of(p))}
+                     for p in pubs],
+            "lookup": {"number": NB.number_of(lan.pub), "frame": h(NB.make_lookup(NB.number_of(lan.pub)))},
+            "answers": [{"pub": h(lan.pub), "nick": nick, "id": aid, "max": mx,
+                         "frames": [h(f) for f in NB.make_answer(lan.pub, nick, aid, mx)]}
+                        for nick, aid, mx in (("Lan", 7, 100), ("Trần Thị Lan", 200, 23))],
+            "good": ["512 384 907" + str(NB._luhn("512384907")), "(" + NB.number_of(tuan.pub)[:3] + ") "
+                     + NB.number_of(tuan.pub)[3:6] + "-" + NB.number_of(tuan.pub)[6:]],
+            "bad": ["5123849070" if NB._luhn("512384907") else "5123849071", "0123456789", "12345", "51238490 7x"],
+        }
+
         # vault + log cipher
         blob = V.pack({"me": "Vault", "x": [1, 2, "ă"]}, "passphrase-123")
         v["vault"] = {"blob": h(blob), "pass": "passphrase-123", "json": {"me": "Vault", "x": [1, 2, "ă"]}}

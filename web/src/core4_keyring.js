@@ -32,11 +32,86 @@ const Ids = (() => {
   return { checkNick, fingerprint, tagOf, makeHandle, handleTag, parseLid };
 })();
 
+// TextCast numbers (port of numbers.py): a 10-digit name computed from the key,
+//   scrypt(pub, "textcast/number/v1", 2^14, 8, 1, 8 B) -> 9 digits + Luhn check digit.
+// Lookup frames (type DIRECTORY = 3, version 1):
+//   lookup [mode]['Q'][number 5 B]   answer [mode]['A'][id][part<<4|parts][chunk of pub‖nick]
+class NumberException extends Error {}
+const Numbers = (() => {
+  const SALT = Bytes.utf8("textcast/number/v1");
+  const DIRECTORY = 3, OP_LOOKUP = 0x51, OP_ANSWER = 0x41, HEAD = 4;
+  const cache = new Map();
+  function luhn(digits) {
+    let total = 0;
+    for (let k = 0; k < digits.length; k++) {
+      let d = digits.charCodeAt(digits.length - 1 - k) - 48;
+      if (k % 2 === 0) { d *= 2; if (d > 9) d -= 9; }
+      total += d;
+    }
+    return (10 - (total % 10)) % 10;
+  }
+  function numberOf(pub) {
+    const key = Bytes.hex(pub);
+    if (cache.has(key)) return cache.get(key);
+    const d = Scrypt.derive(pub, SALT, 1 << 14, 8, 1, 8);
+    let v = 0n;
+    for (const b of d) v = (v << 8n) | BigInt(b);
+    const body = String(100000000n + (v % 900000000n));
+    const n = body + luhn(body);
+    cache.set(key, n);
+    return n;
+  }
+  const format = (n) => (n && n.length === 10 ? `${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6)}` : n);
+  function parse(s) {
+    const n = String(s || "").replace(/[\s.\-()+]/g, "");
+    if (!/^\d{10}$/.test(n)) throw new NumberException("a TextCast number has 10 digits");
+    if (n[0] === "0" || luhn(n.slice(0, 9)) !== n.charCodeAt(9) - 48)
+      throw new NumberException("that number has a typo (check digit does not match)");
+    return n;
+  }
+  const mode = () => Protocol.makeMode(DIRECTORY, 0, 1);
+  function makeLookup(n) {
+    let v = BigInt(n);
+    const out = new Uint8Array(7);
+    out[0] = mode(); out[1] = OP_LOOKUP;
+    for (let k = 6; k >= 2; k--) { out[k] = Number(v & 0xffn); v >>= 8n; }
+    return out;
+  }
+  function makeAnswer(pub, nick, id, maxPayload) {
+    const data = Bytes.concat(pub, Bytes.utf8(nick));
+    const size = Math.max(1, maxPayload - HEAD);
+    const chunks = [];
+    for (let k = 0; k < data.length; k += size) chunks.push(data.slice(k, k + size));
+    if (chunks.length > 15) throw new NumberException("radio profile too small for a number answer");
+    return chunks.map((c, j) => Bytes.concat(Uint8Array.of(mode(), OP_ANSWER, id & 0xff, (j << 4) | chunks.length), c));
+  }
+  const isDirectory = (f) => f.length >= 1 && (f[0] >> 6) === 1 && ((f[0] >> 3) & 7) === DIRECTORY;
+  function parseFrame(f) {
+    if (f.length < 2 || !isDirectory(f)) return null;
+    if (f[1] === OP_LOOKUP && f.length === 7) {
+      let v = 0n;
+      for (let k = 2; k < 7; k++) v = (v << 8n) | BigInt(f[k]);
+      return v >= 1000000000n && v <= 9999999999n ? { op: "lookup", number: String(v) } : null;
+    }
+    if (f[1] === OP_ANSWER && f.length > HEAD) {
+      const part = f[3] >> 4, parts = f[3] & 15;
+      if (parts && part < parts) return { op: "answer", id: f[2], part, parts, chunk: f.slice(HEAD) };
+    }
+    return null;
+  }
+  return { numberOf, format, parse, makeLookup, makeAnswer, parseFrame, isDirectory, luhn };
+})();
+
+// Direct (one-to-one) messages: plaintext inside the sealed frame starts with
+const DM = { TEXT: 1, RESEND: 2, RECEIPT: 3, MAX_ACKS: 4 };
+const DM_INNER = { 1: "text", 2: "resend", 3: "receipt" };
+const dmId = (counter) => counter % 4294967296;          // low 32 bits of the counter
+
 class Keyring {
   constructor(store, name, me = null, passphrase = null) {
     this.store = store; this.name = name; this.me = me;
     this.encrypted = name.endsWith(".lkey");
-    this.locked = false; this.vault = null; this.cache = new Map(); this.seenCtrl = new Set();
+    this.locked = false; this.vault = null; this.cache = new Map(); this.seenCtrl = new Set(); this.pairs = new Map();
     this.dirty = false; this.lastSave = 0; this.floor = Crypto.startupFloor();
     this._load(passphrase);
   }
@@ -79,6 +154,7 @@ class Keyring {
     Ids.checkNick(d.me);
     this.data = d; this.me = d.me ?? null; this.locked = false;
     this.pub = Ed25519.publicKey(Bytes.unb32(d.id_seed));
+    this._findable = d.findable !== false;            // kept while locked
     if (dirtyNow) this.save();
   }
 
@@ -94,7 +170,7 @@ class Keyring {
   wipe() {
     if (this.locked) return;
     this.save();
-    this.data = Keyring.empty(this.me); this.vault = null; this.cache.clear(); this.locked = true;
+    this.data = Keyring.empty(this.me); this.vault = null; this.cache.clear(); this.pairs.clear(); this.locked = true;
   }
   unlock(passphrase) { this._load(passphrase); }
   changePassphrase(newPass) {
@@ -120,25 +196,73 @@ class Keyring {
     return `lid1:${this.handle}:${Bytes.b32(this.pub)}`;
   }
   fingerprint() { return Ids.fingerprint(this.pub); }
+  get number() {
+    if (!this._number) {
+      const d = this.data;
+      if (d.number && d.number_pub === Bytes.b32(this.pub)) this._number = d.number;
+      else {
+        this._number = Numbers.numberOf(this.pub);
+        if (!this.locked) { d.number = this._number; d.number_pub = Bytes.b32(this.pub); this.dirty = true; }
+      }
+    }
+    return this._number;
+  }
+  get findable() { return this._findable; }
+  setFindable(on) { this._requireUnlocked(); this.data.findable = this._findable = !!on; this.save(); }
   _myKey() {
     if (!this.handle) throw new KeyException("set a nick to post in groups");
     return this.handle.toLowerCase();
   }
 
   // -- contacts ----------------------------------------------------------------------------
-  addContact(lid, name = null) {
+  // A pasted / scanned identity string holds the full key: the contact is verified.
+  addContact(lid, name = null, verified = true) {
     this._requireUnlocked();
     const [h, p] = Ids.parseLid(lid);
     const n = ((name && name.trim()) || h.split("#")[0]).trim();
-    this._sec("contacts")[Bytes.b32(p)] = { name: n, handle: h };
+    const k = Bytes.b32(p);
+    const old = this._sec("contacts")[k] || {};
+    this._sec("contacts")[k] = { name: n, handle: h, dm_out: old.dm_out || 0, dm_in: old.dm_in || 0,
+      verified: !!(verified || old.verified), number: old.number || Numbers.numberOf(p) };
+    this.pairs.delete(k);
     this.save();
     return n;
+  }
+  // Found by number over the air: check the key really has that number, and no other
+  // saved contact has it (that would mean somebody is faking it).
+  addFound(pub, nick, number, name = null) {
+    Ids.checkNick(nick);
+    if (Numbers.numberOf(pub) !== number) throw new KeyException("the answer does not match that number");
+    for (const [k, c] of Object.entries(this._sec("contacts")))
+      if (k !== Bytes.b32(pub) && this._contactNumber(k, c) === number)
+        throw new KeyException(`${c.name} already has number ${Numbers.format(number)} with a different key - check in person`);
+    return this.addContact(`lid1:${Ids.makeHandle(nick, pub)}:${Bytes.b32(pub)}`, name, false);
+  }
+  _contactNumber(k, c) {
+    if (!c.number) { c.number = Numbers.numberOf(Bytes.unb32(k)); this.dirty = true; }
+    return c.number;
+  }
+  contactByNumber(number) {
+    for (const [k, c] of Object.entries(this._sec("contacts"))) if (this._contactNumber(k, c) === number) return c;
+    return null;
+  }
+  contactInfo() {
+    const me = Bytes.b32(this.pub);
+    return Object.entries(this._sec("contacts")).filter(([k]) => k !== me)
+      .map(([k, c]) => ({ name: c.name, handle: c.handle, number: this._contactNumber(k, c), verified: c.verified !== false }))
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  }
+  renameContact(handle, name) {
+    this._requireUnlocked();
+    if (!name || !name.trim()) throw new KeyException("a name is needed");
+    this._contact(handle)[1].name = name.trim();
+    this.save();
   }
   removeContact(name) {
     this._requireUnlocked();
     const c = this._sec("contacts");
     for (const [k, m] of Object.entries(c))
-      if (m.name === name || (m.handle || "").toLowerCase() === name.toLowerCase()) { delete c[k]; this.save(); return true; }
+      if (m.name === name || (m.handle || "").toLowerCase() === name.toLowerCase()) { delete c[k]; this.pairs.delete(k); this.save(); return true; }
     return false;
   }
   contacts() {
@@ -147,6 +271,84 @@ class Keyring {
   display(handle, pub) {
     if (pub) { const c = this._sec("contacts")[Bytes.b32(pub)]; if (c && c.name) return c.name; }
     return handle;
+  }
+
+  // -- direct (one-to-one) messages (see keyring.py) -----------------------------------------
+  //   pair = HMAC(a_me * A_peer, "lora-text/pair/" + h1 + "|" + h2)[:16]   (handles lower, sorted)
+  //   each direction: member_secret(pair, sender handle); ordinary SEALED frames
+  directContacts() {
+    const me = Bytes.b32(this.pub);
+    return Object.entries(this._sec("contacts")).filter(([k]) => k !== me)
+      .map(([, c]) => [c.handle, c.name]).sort((a, b) => a[1].toLowerCase().localeCompare(b[1].toLowerCase()));
+  }
+  _contact(handle) {
+    for (const [k, c] of Object.entries(this._sec("contacts")))
+      if (c.handle.toLowerCase() === handle.toLowerCase()) return [k, c];
+    throw new KeyException(`'${handle}' is not one of your contacts`);
+  }
+  _dmKeys(key, c) {
+    if (!this.pairs.has(key)) {
+      let secrets = null;
+      if (this.me && key !== Bytes.b32(this.pub)) {
+        const s = Ed25519.sharedPoint(Bytes.unb32(this.data.id_seed), Bytes.unb32(key));
+        if (s) {
+          const me = this.handle.toLowerCase(), peer = c.handle.toLowerCase();
+          const [h1, h2] = [me, peer].sort();
+          const pair = Crypto.derive(s, `pair/${h1}|${h2}`).slice(0, 16);
+          secrets = [Crypto.memberSecret(pair, me), Crypto.memberSecret(pair, peer)];
+        }
+      }
+      this.pairs.set(key, secrets);
+    }
+    return this.pairs.get(key);
+  }
+  _sealDm(handle, plaintext) {
+    this._requireUnlocked();
+    const [key, c] = this._contact(handle);
+    const keys = this._dmKeys(key, c);
+    if (!keys) throw new KeyException(`cannot message ${c.name}: their identity key is not usable`);
+    const i = Crypto.nextCounter(c.dm_out || 0, this.floor);
+    const mode = Protocol.makeMode(MsgType.SEALED, 0, Protocol.PRIVATE_VERSION);
+    const frame = Crypto.seal(this._key(keys[0]), mode, i, plaintext, true);
+    c.dm_out = i;
+    this.save();
+    return [frame, i];
+  }
+  sealDirect(handle, text, resend = false) {
+    const body = Bytes.utf8(Protocol.normalize(text.trim()));
+    const limit = Protocol.profile.maxPayload - Crypto.FRAME_OVERHEAD - 1;
+    if (body.length > limit) throw new PayloadTooLong(`${body.length} B of text > ${limit} B limit for a direct message`);
+    return this._sealDm(handle, Bytes.concat(new Uint8Array([resend ? DM.RESEND : DM.TEXT]), body));
+  }
+  makeReceipt(handle, ids) {
+    const parts = [new Uint8Array([DM.RECEIPT])];
+    for (const i of ids.slice(0, DM.MAX_ACKS)) parts.push(Bytes.intBE(dmId(i)));
+    return this._sealDm(handle, Bytes.concat(...parts))[0];
+  }
+  _openDirect(frame, t) {
+    for (const [key, c] of Object.entries(this._sec("contacts"))) {
+      const keys = this._dmKeys(key, c);
+      if (!keys) continue;
+      const k = this._key(keys[1]);
+      for (const i of Crypto.matchingCounters(k, frame, c.dm_in || 0, t)) {
+        const pt = Crypto.unseal(k, frame, i, true);
+        if (!pt.length || !(pt[0] in DM_INNER)) continue;
+        let text = "", acks = [];
+        if (pt[0] === DM.RECEIPT) {
+          const n = pt.length - 1;
+          if (n === 0 || n % 4 || n > 4 * DM.MAX_ACKS) continue;
+          for (let j = 0; j < n / 4; j++) acks.push(Bytes.readIntBE(pt, 1 + 4 * j));
+        } else {
+          text = Bytes.utf8Strict(pt, 1);
+          if (text === null) continue;
+        }
+        c.dm_in = i;
+        this.touch();
+        return { kind: "direct", source: "@" + c.handle, sender: c.name, text, counter: i, pub: Bytes.unb32(key),
+                 verified: true, group: false, inner: DM_INNER[pt[0]], acks };
+      }
+    }
+    return null;
   }
 
   // -- management ----------------------------------------------------------------------------
@@ -363,7 +565,10 @@ class Keyring {
     if (version !== Protocol.PRIVATE_VERSION || (type !== MsgType.SIGNED && type !== MsgType.SEALED) ||
         frame.length < Crypto.FRAME_OVERHEAD) return null;
     const encrypted = type === MsgType.SEALED;
-    if (encrypted) { const c = this._openCtrl(frame, t); if (c) return c; }
+    if (encrypted) {
+      const c = this._openCtrl(frame, t); if (c) return c;
+      const d = this._openDirect(frame, t); if (d) return d;
+    }
     for (const rx of this._receiveStreams()) {
       const k = this._key(rx.secret);
       for (const i of Crypto.matchingCounters(k, frame, rx.holder[rx.field] || 0, t)) {
@@ -411,7 +616,9 @@ class MessageLog {
     return r.id;
   }
   _find(id) { for (let i = this.rows.length - 1; i >= 0; i--) if (this.rows[i].id === id) return this.rows[i]; return null; }
-  setTxOk(id, ok) { const r = this._find(id); if (r) { r.tx_ok = ok ? 1 : 0; this._changed(); } }
+  setTxOk(id, ok) { this.setStatus(id, ok ? 1 : 0); }
+  // tx_ok: 0 not sent, 1 sent, 2 delivered, 3 not confirmed (direct messages)
+  setStatus(id, code) { const r = this._find(id); if (r) { r.tx_ok = code; this._changed(); } }
   update(id, kind, text, channel, sender) {
     const r = this._find(id); if (!r) return;
     Object.assign(r, { kind, text, channel, sender }); this._changed();

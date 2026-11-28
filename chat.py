@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
-TextCast - main app (terminal UI, Textual).
+TextCast - terminal app (Textual).
 
     pip install pyserial textual qrcode      (once; qrcode is optional)
     python3 chat.py
 
-A login panel asks for your identity, passphrase and the LA66 port.
-F7 (or /radio) opens the radio settings panel. Optional flags (--port, --nick,
---region, …) pre-fill the panels.
+Like a phone messenger: chats on the left (Public, people, groups), the open
+chat on the right, type at the bottom.
 
-Keys:  Ctrl+N / Ctrl+P  next / previous channel   (or click the sidebar)
-       F1 help  F2 keys  F3 share  F4 sealed/signed  F5 lock  F6 me  Ctrl+Q quit
-Typed commands also work: /help /keys /share /signed /announce /lock /whoami
-/contacts /contact add <lid1:…> [name] /contact del <name> /quit
+Keys:  Ctrl+N new chat (add a person by their TextCast number)
+       F2 settings (your number, radio, lock)   F3 chat info   F1 help   Ctrl+Q quit
+       Esc goes to the chat list (arrows + Enter); Alt+Up / Alt+Down switch chats
+Typed commands also work: /add NUMBER  /number  /resend  /lock  /radio  /help  /quit
+
+If the LA66 is unplugged, plug it back in: the app reconnects by itself.
 
 The identity (keys-<nick>.lkey) is protected by a passphrase asked at start.
 It locks itself after --lock-minutes of inactivity (default 15, 0 = never).
@@ -39,9 +40,10 @@ try:
                                  RichLog, Select, Static)
 except ImportError:
     sys.exit("This app needs Textual:  python3 -m pip install textual\n"
-             "(or use the simple UI:  python3 simple_chat.py --port … --nick …)")
+             "(or use TextCast in the browser: see web/README.md)")
 
 from lora_text.node import SENSITIVE, KeyError_, Msg, Node, PayloadTooLong, WrongPassphrase
+from lora_text.numbers import NumberError, format_number
 from lora_text import config as CFG
 from lora_text import hardware as HW
 from lora_text.atradio import make_factory
@@ -55,17 +57,21 @@ KIND_STYLE = {
     "signed": ("signed", "green"),
     "sealed": ("", "cyan"),
     "join": ("group", "magenta"),
+    "direct": ("", "medium_purple1"),
     "unverified": ("unverified", "yellow"),
     "locked": ("", "grey50"),
     "undecoded": ("", "grey50"),
     "pending": ("", "grey50"),
 }
-TYPE_ICON = {"all": "◎", "public": "○", "group": "◆", "own": "▲", "follow": "▼", "other": "·"}
-TYPE_COLOR = {"all": "white", "public": "yellow", "group": "magenta", "own": "dodger_blue2",
-              "follow": "green", "other": "grey50"}
-CHANNEL_DESC = {"all": "everything you receive", "public": "plain text · anyone can read",
-                "group": "group · sealed, members only", "own": "your stream · your followers read",
-                "follow": "following · read-only", "other": "packets you cannot decode"}
+TYPE_ICON = {"all": "◎", "public": "◎", "direct": "●", "group": "◆", "own": "▲", "follow": "▼",
+             "other": "·"}
+CHAT_TYPES = ("public", "direct", "group", "own", "follow")      # shown in the chat list
+TYPE_COLOR = {"all": "white", "public": "yellow", "direct": "medium_purple1", "group": "magenta",
+              "own": "dodger_blue2", "follow": "green", "other": "grey50"}
+CHANNEL_DESC = {"all": "everything you receive", "public": "everyone nearby can read",
+                "direct": "🔒 private", "group": "🔒 group · members only",
+                "own": "your channel · followers read", "follow": "channel · read-only",
+                "other": "packets you cannot decode"}
 NAME_W = 18                      # width of the sender column
 
 
@@ -123,40 +129,55 @@ def _name(t: Text, name: str, style: str, mark: str = "", mark_style: str = "") 
     t.append(" " * max(1, NAME_W + 1 - used))
 
 
-def render(m: Msg, show_channel: bool) -> Text:
-    tag, color = KIND_STYLE.get(m.kind, ("", "white"))
-    t = Text()
-    t.append(time.strftime("%H:%M  ", time.localtime(m.ts)), style="grey50")
+STATUS_TEXT = {"queued": ("🕓", "yellow"), "sent": ("✓", "green"), "delivered": ("✓✓", "bold green"),
+               "unconfirmed": ("✓ not delivered · F8 resends", "bold yellow"),
+               "failed": ("! not sent", "bold red")}
+
+
+def render(m: Msg, ctype: str) -> Text:
+    """One message as a chat line: theirs on the left (with the sender's name in
+    Public and groups), mine on the right with ✓ / ✓✓."""
+    hhmm = time.strftime("%H:%M", time.localtime(m.ts))
     if m.direction == "sys":
-        t.append("• " + m.text, style="italic grey62")
+        return Text(f"· {m.text} ·", style="italic grey62", justify="center")
+    if m.direction == "tx":
+        t = Text(justify="right")
+        t.append(m.text, style="bold")
+        t.append(f"  {hhmm} ", style="grey50")
+        mark, style = STATUS_TEXT.get(m.status or "queued", ("", ""))
+        if m.status == "failed" and m.kind == "direct":
+            mark += " · F8 resends"
+        t.append(mark, style=style)
         return t
-    if m.direction == "tx":
-        _name(t, "me", "bold dodger_blue2")
-    else:
-        name = m.sender or "unknown"
-        if m.kind in ("plain", "unverified"):          # names in public are claims
-            _name(t, name, "yellow", "?", "grey50")
-        elif m.group:                                  # any member could have sent it
-            _name(t, name, color, "◆", "magenta")
-        elif m.verified:
-            _name(t, name, f"bold {color}", "✓", "bold green")
-        else:
-            _name(t, name, "grey62" if m.kind in ("locked", "undecoded", "pending") else color)
-    if show_channel and m.channel not in ("public", "all", "other"):
-        t.append(f"{m.channel} › ", style="dodger_blue2" if m.direction == "tx" else color)
-    if tag:
-        t.append(f"{tag} · ", style=f"{color} italic")
-    t.append(m.text, style="grey50 italic" if m.kind in ("locked", "undecoded", "pending") else "")
+    t = Text()
+    tag, color = KIND_STYLE.get(m.kind, ("", "white"))
+    dim = m.kind in ("locked", "undecoded", "pending", "unverified")
+    if ctype in ("public", "group", "all", "other"):
+        name = m.sender or "?"
+        t.append(name, style="grey62" if dim else f"bold {color}")
+        if m.verified and not m.group and m.kind != "direct":
+            t.append(" ✓", style="bold green")
+        t.append(": ")
+    elif m.verified and m.kind in ("signed", "sealed"):
+        t.append("✓ ", style="bold green")
+    t.append(m.text, style="grey50 italic" if dim else "")
+    t.append(f"  {hhmm}", style="grey50")
+    return t
+
+
+def render_log(m: Msg, title=lambda c: c) -> Text:
+    """A line of the radio log: every packet, with where it went and the signal."""
+    t = Text()
+    t.append(time.strftime("%d %b %H:%M  ", time.localtime(m.ts)), style="grey50")
+    t.append("sent  " if m.direction == "tx" else "heard ", style="dodger_blue2" if m.direction == "tx" else "green")
+    where = {"other": "not for you", "public": "public"}.get(m.channel, title(m.channel) if m.channel else "?")
+    t.append(f"{m.kind:<10} {where[:14]:<14} ", style="grey62")
     if m.direction == "rx" and m.rssi is not None:
-        t.append(f"   {m.rssi} dBm" + (f" · {m.snr} dB" if m.snr is not None else ""),
-                 style="grey35")
-    if m.direction == "tx":
-        if m.status == "sent":
-            t.append(f"   ✓ sent · {m.airtime:.0f} ms", style="green")
-        elif m.status == "failed":
-            t.append("   ✗ not sent", style="bold red")
-        else:
-            t.append("   … waiting for a slot", style="yellow")
+        t.append(f"{m.rssi:>4} dBm" + (f" {m.snr:>3} dB " if m.snr is not None else "        "), style="grey62")
+    t.append(f"{m.size:>3} B  ", style="grey50")
+    if m.sender and m.direction == "rx":
+        t.append(f"{m.sender}: ", style="bold")
+    t.append(m.text)
     return t
 
 
@@ -257,18 +278,19 @@ class KeysScreen(ModalScreen):
                      style="bold green" if f.get("verified") else "yellow")
         if not k.data["follow"]:
             t.append("  none\n", style="grey50")
-        head("Contacts")
-        contacts = k.data.get("contacts", {})
-        for c in contacts.values():
-            t.append(f"  {c['name']}", style="bold")
-            t.append(f"   {c['handle']}\n", style="grey58")
-        if not contacts:
-            t.append("  none - paste someone's lid1: string (their F6) to add one\n",
-                     style="grey50")
+        head("People (private messages)")
+        people = k.direct_contacts() if not k.locked else []
+        for handle, name in people:
+            t.append(f"  ● {name}", style="medium_purple1 bold")
+            t.append(f"   {handle}\n", style="grey58")
+        if people:
+            t.append("  They are in the chat list. Ctrl+N adds more people.\n", style="grey58")
+        else:
+            t.append("  none - Ctrl+N adds a person by their TextCast number\n", style="grey50")
         return t
 
     def on_mount(self) -> None:
-        self.query_one(".dialog").border_title = "Keys & contacts"
+        self.query_one(".dialog").border_title = "Groups & channels"
         self.query_one("#key-input", Input).focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -298,7 +320,7 @@ class KeysScreen(ModalScreen):
                 label, typ = self.node.key_add(share, name.strip() or None)
                 msg = {"follow": f"Following '{label}'.",
                        "group": f"Joined '{label}' and announced you to the group.",
-                       "contact": f"Saved contact '{label}' ✓"}[typ]
+                       "contact": f"Added {label}. Close this window: {label} is in the chat list."}[typ]
                 result.update(Text(msg, style="green"))
             elif bid == "delete":
                 ok = self.node.key_delete(value) or self.node.contact_del(value)
@@ -356,12 +378,255 @@ class UnlockScreen(ModalScreen):
             self._try()
 
 
+class NewChatScreen(ModalScreen):
+    """Ctrl+N: add a person by their TextCast number (asked over the radio), paste an
+    identity string or a group invite, or start a group. Returns the chat to open."""
+    BINDINGS = [Binding("escape", "dismiss_screen", "Close")]
+
+    def __init__(self, node: Node):
+        super().__init__()
+        self.node, self.number = node, None
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(classes="dialog"):
+            yield Label("Their TextCast number", classes="field-label first")
+            with Horizontal(classes="row"):
+                yield Input(placeholder="e.g. 512 384 9076", id="num")
+                yield Button("Find", id="find", variant="primary")
+            yield Static("", id="status", classes="error")
+            with Vertical(id="found"):
+                yield Label("Save as", classes="field-label")
+                yield Input(id="name")
+                with Horizontal(classes="buttons"):
+                    yield Button("Add and chat", id="add", variant="success")
+            yield Label("Or paste an identity string or a group invite", classes="section-title")
+            with Horizontal(classes="row"):
+                yield Input(placeholder="lid1:…  ltg2:…  lts3:…", id="paste")
+                yield Button("Add", id="paste-add")
+            yield Label("Or start a group", classes="section-title")
+            with Horizontal(classes="row"):
+                yield Input(placeholder="group name", id="group")
+                yield Button("Create", id="group-new")
+            yield Static("", id="result")
+            with Horizontal(classes="buttons"):
+                yield Button("Close", id="close")
+
+    def on_mount(self) -> None:
+        self.query_one(".dialog").border_title = "New chat"
+        self.query_one("#found").display = False
+        self.query_one("#num", Input).focus()
+
+    def _status(self, text: str, style: str = "grey70") -> None:
+        self.query_one("#status", Static).update(Text(text, style=style))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        target = {"num": "#find", "name": "#add", "paste": "#paste-add", "group": "#group-new"}.get(event.input.id)
+        if target:
+            self.query_one(target, Button).press()
+
+    def lookup_result(self, r: dict) -> None:
+        if r.get("number") != self.number:
+            return
+        if r["status"] == "found":
+            self._status(f"Found {r['nick']} nearby.", "bold green")
+            self.query_one("#found").display = True
+            name = self.query_one("#name", Input)
+            name.value = r["nick"]
+            name.focus()
+        elif r["status"] == "conflict":
+            self.number = None
+            self._status(f"⚠ Two different devices answered for this number ({r['nick']}). Someone may "
+                         "be pretending: add the person with their identity string instead.", "bold red")
+        else:
+            self.number = None
+            self._status(f"Nobody answered for {format_number(r['number'])}. Check the number; they need "
+                         "TextCast running with the radio plugged in, within range.", "yellow")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id
+        if bid == "close":
+            self.dismiss(None)
+            return
+        try:
+            if bid == "find":
+                self.query_one("#found").display = False
+                r = self.node.lookup(self.query_one("#num", Input).value)
+                if r["status"] == "known":
+                    self.dismiss(r["channel"])
+                    return
+                self.number = r["number"]
+                self._status(f"Looking for {format_number(r['number'])} nearby… (up to 10 s)")
+            elif bid == "add":
+                ch = self.node.add_found(self.number, self.query_one("#name", Input).value.strip() or None)
+                self.dismiss(ch)
+            elif bid == "paste-add":
+                v = self.query_one("#paste", Input).value.strip()
+                label, typ = self.node.key_add(v)
+                self.dismiss("@" + v.split(":")[1] if typ == "contact" else label)
+            elif bid == "group-new":
+                name = self.query_one("#group", Input).value.strip()
+                share = self.node.key_new_group(name)
+                copied = copy_to_clipboard(self.app, share)
+                self.query_one("#result", Static).update(Text.assemble(
+                    (f"Group '{name}' created. Send this invite to the members"
+                     + (" (copied)" if copied else "") + ":\n", "green"), (share, "bold")))
+                self.app.refresh_chats(name)
+        except (KeyError_, NumberError, ValueError) as e:
+            self._status(str(e), "red")
+
+    def action_dismiss_screen(self) -> None:
+        self.dismiss(None)
+
+
+class ChatInfoScreen(ModalScreen):
+    """F3: about the open chat - a person's number (rename, delete), a group's invite."""
+    BINDINGS = [Binding("escape", "dismiss_screen", "Close")]
+
+    def __init__(self, node: Node, channel: str):
+        super().__init__()
+        self.node, self.channel = node, channel
+        self.ctype = node.channel_type(channel)
+
+    def compose(self) -> ComposeResult:
+        t, body, share = self.ctype, Text(), None
+        if t == "direct":
+            c = next((x for x in self.node.keys.contact_info() if "@" + x["handle"] == self.channel), None)
+            body.append(f"{self.node.channel_title(self.channel)}\n", style="bold")
+            if c:
+                body.append(f"TextCast number  {format_number(c['number'])}\n", style="bold")
+                body.append("✓ added with their identity string\n" if c["verified"] else
+                            "Added by number. To be sure it's really them, check the number with them.\n",
+                            style="green" if c["verified"] else "yellow")
+            body.append(f"Name on the radio: {self.channel[1:]}\n", style="grey58")
+        elif t == "public":
+            body.append("Everyone within radio range reads the Public chat. Don't write anything private "
+                        "here: use a private chat (Ctrl+N and their number).\n")
+            body.append(f"You appear as {self.node.callsign}.", style="grey58")
+        else:
+            body.append(f"{self.channel}\n", style="bold")
+            if t != "follow":
+                share = self.node.key_share(self.channel)
+                body.append("Invite people with this string (it holds the key - share it only with them):\n\n"
+                            if t == "group" else "Followers need this string:\n\n", style="grey58")
+                body.append(share + "\n\n", style="bold")
+                q = qr_text(share)
+                if q:
+                    body.append_text(q)
+        self.share = share
+        with VerticalScroll(classes="dialog"):
+            yield Static(body)
+            if t == "direct":
+                yield Label("Name", classes="field-label")
+                yield Input(value=self.node.channel_title(self.channel), id="rename")
+            yield Static("", id="result")
+            with Horizontal(classes="buttons"):
+                if share:
+                    yield Button("Copy", id="copy")
+                if t != "public":
+                    yield Button({"direct": "Delete contact", "group": "Leave group", "own": "Delete channel",
+                                  "follow": "Unfollow"}[t], id="delete", variant="error")
+                if t == "direct":
+                    yield Button("Save name", id="save")
+                yield Button("Close", id="close", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one(".dialog").border_title = {"direct": "Contact", "public": "Public", "group": "Group"}.get(
+            self.ctype, "Channel")
+        self.armed = False
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.query_one("#save", Button).press()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id
+        try:
+            if bid == "copy":
+                ok = copy_to_clipboard(self.app, self.share)
+                self.query_one("#result", Static).update(Text("Copied." if ok else "Copy failed - select the text.",
+                                                              style="green" if ok else "red"))
+            elif bid == "save":
+                self.node.keys.rename_contact(self.channel[1:], self.query_one("#rename", Input).value)
+                self.dismiss("changed")
+            elif bid == "delete":
+                if not self.armed:
+                    self.armed = True
+                    event.button.label = "Sure? Press again"
+                    return
+                if self.ctype == "direct":
+                    self.node.contact_del(self.channel[1:])
+                else:
+                    self.node.key_delete(self.channel)
+                self.dismiss("deleted")
+            else:
+                self.dismiss(None)
+        except KeyError_ as e:
+            self.query_one("#result", Static).update(Text(str(e), style="red"))
+
+    def action_dismiss_screen(self) -> None:
+        self.dismiss(None)
+
+
+class SettingsScreen(ModalScreen):
+    """F2: your number and identity, privacy, radio, lock. Returns an action for the app."""
+    BINDINGS = [Binding("escape", "dismiss_screen", "Close")]
+
+    def __init__(self, node: Node):
+        super().__init__()
+        self.node = node
+
+    def compose(self) -> ComposeResult:
+        n = self.node
+        body = Text()
+        body.append(f"{n.nick}\n", style="bold")
+        if not n.locked:
+            body.append("Your TextCast number  ", style="grey58")
+            body.append(format_number(n.number) + "\n", style="bold green")
+            body.append("People nearby can add you with it (Ctrl+N on their side).", style="grey58")
+        with VerticalScroll(classes="dialog"):
+            yield Static(body)
+            yield Checkbox("Let people find me by my number", value=n.keys.findable, id="findable",
+                           disabled=n.locked)
+            yield Static("", id="result")
+            with Horizontal(classes="buttons"):
+                yield Button("Copy number", id="copy")
+                yield Button("My identity string", id="whoami")
+            with Horizontal(classes="buttons"):
+                yield Button("Radio settings", id="radio")
+                yield Button("Radio log", id="log")
+                yield Button("Groups & channels", id="keys")
+            with Horizontal(classes="buttons"):
+                if n.protected:
+                    yield Button("Lock", id="lock", variant="warning")
+                yield Button("Close", id="close", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one(".dialog").border_title = "Settings"
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        try:
+            self.node.set_findable(event.value)
+        except KeyError_ as e:
+            self.query_one("#result", Static).update(Text(str(e), style="red"))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "copy":
+            ok = copy_to_clipboard(self.app, format_number(self.node.number))
+            self.query_one("#result", Static).update(Text("Copied." if ok else "Copy failed.",
+                                                          style="green" if ok else "red"))
+            return
+        self.dismiss(None if event.button.id == "close" else event.button.id)
+
+    def action_dismiss_screen(self) -> None:
+        self.dismiss(None)
+
+
 # ---------------------------------------------------------------------------
 # login panel
 # ---------------------------------------------------------------------------
 
 NEW_IDENTITY = "__new__"
 OTHER_PORT = "__other__"
+AUTO_PORT = "auto"
 
 
 class LoginScreen(Screen):
@@ -375,7 +640,8 @@ class LoginScreen(Screen):
     @staticmethod
     def _port_options() -> list[tuple[str, str]]:
         opts = [(f"{dev}   {desc}".rstrip(), dev) for dev, desc in list_ports()]
-        return opts + [("Other port… (type it)", OTHER_PORT)]
+        return ([("Automatic - use the radio when it is plugged in", AUTO_PORT)] + opts
+                + [("Other port… (type it)", OTHER_PORT)])
 
     def compose(self) -> ComposeResult:
         ui = self.args.cfg.get("ui", {}) if getattr(self.args, "cfg", None) else {}
@@ -394,10 +660,10 @@ class LoginScreen(Screen):
             want_port = want_port.replace("/dev/tty.", "/dev/cu.")   # same device on macOS
         if want_port in devs:
             port_kw, manual = {"value": want_port}, ""
-        elif want_port:
+        elif want_port and want_port.startswith(("COM", "/dev/")) and self.args.port:
             port_kw, manual = {"value": OTHER_PORT}, want_port
-        else:
-            port_kw, manual = {}, ""
+        else:                                   # nothing chosen, or not plugged in now: automatic
+            port_kw, manual = {"value": AUTO_PORT}, ""
         with VerticalScroll(classes="dialog narrow", id="login"):
             yield Label("Identity", classes="field-label first")
             yield Select(opts, value=default, allow_blank=False, id="ident")
@@ -407,7 +673,7 @@ class LoginScreen(Screen):
             yield Input(placeholder="passphrase", password=True, id="pw")
             yield Input(placeholder="repeat the passphrase", password=True, id="pw2")
             yield Checkbox("No passphrase (lab only)", id="lab")
-            yield Label("Serial port", classes="field-label")
+            yield Label("Radio (you can plug it in later)", classes="field-label")
             with Horizontal(id="port-row"):
                 yield Select(ports, prompt="select the port", id="port", **port_kw)
                 yield Button("↻", id="refresh")
@@ -507,8 +773,7 @@ class LoginScreen(Screen):
         port = (self.query_one("#port-manual", Input).value.strip() if sel == OTHER_PORT
                 else sel if isinstance(sel, str) else "")
         if not port:
-            self._fail("choose the serial port (plug the module in, then ↻)")
-            return
+            port = AUTO_PORT
         self.dismiss({"keys": path, "nick": nick, "passphrase": passphrase, "port": port})
 
 
@@ -702,64 +967,67 @@ class RadioScreen(ModalScreen):
 # ---------------------------------------------------------------------------
 
 
-class ChannelItem(ListItem):
-    def __init__(self, channel: str, ctype: str):
-        self.channel, self.ctype = channel, ctype
-        self.label = Label(self._text(0))
+class ChatItem(ListItem):
+    """A chat in the list: name and time, then the last message (like a phone messenger)."""
+
+    def __init__(self, channel: str, ctype: str, title: str):
+        self.channel, self.ctype, self.chan_title = channel, ctype, title
+        self.label = Label(Text(title))
         super().__init__(self.label)
 
-    def _text(self, unread: int) -> Text:
-        t = Text()
+    def show(self, last: Msg | None, unread: int) -> None:
+        t = Text(no_wrap=True, overflow="ellipsis")
         t.append(f"{TYPE_ICON.get(self.ctype, '·')} ", style=TYPE_COLOR.get(self.ctype, "white"))
-        name = {"all": "All messages", "public": "Public", "other": "Undecodable"}.get(
-            self.channel, self.channel) if self.ctype in ("all", "public", "other") else self.channel
-        t.append(name[:18])
+        t.append(self.chan_title[:20], style="bold")
+        if last is not None:
+            when = time.strftime("%H:%M" if time.localtime(last.ts)[:3] == time.localtime()[:3] else "%d %b",
+                                 time.localtime(last.ts))
+            t.append(f"  {when}", style="bold yellow" if unread else "grey50")
         if unread:
-            t.append(f"  {unread} ", style="bold black on yellow")
-        return t
+            t.append(f" {unread} ", style="bold black on yellow")
+        t.append("\n  ")
+        if last is None:
+            prev = {"public": "everyone nearby", "direct": "private chat", "group": "group",
+                    "own": "your channel", "follow": "channel"}.get(self.ctype, "")
+        elif last.direction == "tx":
+            prev = ("✓✓ " if last.status == "delivered" else "You: ") + last.text
+        elif self.ctype in ("public", "group") and last.sender:
+            prev = f"{last.sender}: {last.text}"
+        else:
+            prev = last.text
+        t.append(prev[:26], style="grey62")
+        self.label.update(t)
 
-    def set_unread(self, n: int) -> None:
-        self.label.update(self._text(n))
 
+HELP = """[b]Chats[/b]
+  The list on the left is your chats; the open one is on the right. Type at the bottom
+  and press Enter. Click a chat, or press Esc then the arrows and Enter.
+  ◎ Public        everyone nearby can read it
+  ● a person      private: only the two of you; ✓✓ when their device confirms
+  ◆ a group       only members can read
+  ▲ / ▼           a broadcast channel you post to / follow
 
-class SectionItem(ListItem):
-    """Heading in the channel list (skipped when moving through channels)."""
+[b]Adding people[/b]
+  Press Ctrl+N and type their TextCast number (they find theirs in F2). Your app
+  asks nearby devices who has it; when they answer, save them and start writing.
+  Both of you add each other. You can also paste an identity string (lid1:…),
+  which proves it's really them.
 
-    def __init__(self, title: str):
-        super().__init__(Label(Text(title.upper(), style="bold grey58")), classes="section")
+[b]Ticks[/b]
+  🕓 waiting to send    ✓ sent by your radio    ✓✓ delivered (private chats)
+  "not delivered": no confirmation within 30 s (out of range, or they haven't
+  added you) - F8 sends it again.
 
-
-HELP = """[b]Getting around[/b]
-  The channel list on the left chooses what you read [i]and[/i] where you send.
-  Ctrl+N / Ctrl+P (or click) to switch. Type a message and press Enter.
-
-[b]Channels[/b]
-  ◎ All messages   everything you receive; sending here = public plain text
-  ○ Public         plain text, anyone can read
-  ◆ Group          sealed, only members can read
-  ▲ My stream      sealed (or signed with F4) for your followers
-  ▼ Following      a stream you follow (read-only)
-  · Undecodable    packets you have no key for
-
-[b]Who sent it[/b]
-  Tuan#K7QX ✓    followed stream, signed by Tuan#K7QX's key
-  Thầy Tuấn ✓    the same, shown with your contact name for that key
-  Lan#P2MD ◆     group message: sent with the group key, any member could send it
-  Tuan ?         public plain message: the name is only a claim
+[b]The radio[/b]
+  The top bar shows it. If you unplug the LA66, plug it back in: TextCast
+  reconnects by itself. Radio settings and the radio log are in F2.
 
 [b]Keys[/b]
-  F1 help   F2 keys & contacts   F3 share / QR   F4 sealed ↔ signed
-  F5 lock   F6 who am I          F7 radio settings   Ctrl+Q quit
+  Ctrl+N new chat   F2 settings   F3 chat info   F8 resend   F1 help   Ctrl+Q quit
+  Esc chat list     Alt+Up / Alt+Down previous / next chat   F5 lock
 
 [b]Typed commands[/b]
-  /keys  /share  /signed  /announce  /member HANDLE  /lock  /whoami  /radio
-  /contacts  /contact add lid1:… \\[name]  /contact del NAME  /help  /quit
-
-[b]Status[/b]
-  ✓ sent · 72 ms       the radio transmitted it (time on air)
-  … waiting for a slot rate limit: average 1 message per 10 s, bursts of 3
-  -95 dBm · 7 dB       signal strength and quality of a received message
-  The app locks itself after a period of inactivity (F5 locks now)."""
+  /add NUMBER   /number   /resend   /lock   /radio   /log   /whoami   /help   /quit"""
 
 
 class RadioApp(App):
@@ -774,10 +1042,12 @@ class RadioApp(App):
 
     /* main area */
     #body { height: 1fr; }
-    #sidebar { width: 28; border: round $primary-darken-1; border-title-color: $text;
+    #sidebar { width: 34; border: round $primary-darken-1; border-title-color: $text;
                border-title-style: bold; padding: 0; }
-    #sidebar > ListItem { padding: 0 1; }
-    #sidebar > .section { padding: 1 1 0 1; }
+    #sidebar > ListItem { padding: 0 1; height: 2; }
+    .row { height: auto; }
+    .row Input { width: 1fr; }
+    .row Button { margin-left: 1; }
     #log { border: round $primary-darken-1; padding: 0 1; border-title-color: $text;
            border-title-style: bold; }
 
@@ -790,7 +1060,8 @@ class RadioApp(App):
     #message { border: none; height: 1; width: 1fr; padding: 0; }
 
     /* dialogs */
-    InfoScreen, KeysScreen, UnlockScreen, RadioScreen, LoginScreen { align: center middle; }
+    InfoScreen, KeysScreen, UnlockScreen, RadioScreen, LoginScreen, NewChatScreen, ChatInfoScreen,
+    SettingsScreen { align: center middle; }
     .dialog { width: 80; max-width: 96%; height: auto; max-height: 92%;
               border: round $primary; border-title-color: $text; border-title-style: bold;
               background: $surface; padding: 1 2; }
@@ -822,27 +1093,34 @@ class RadioApp(App):
                      border-title-color: $success; }
     """
     BINDINGS = [
-        Binding("ctrl+n", "next_channel", "Next", priority=True),
-        Binding("ctrl+p", "prev_channel", "Prev", priority=True),
+        Binding("ctrl+n", "new_chat", "New chat", priority=True),
+        Binding("f2", "settings", "Settings", priority=True),
+        Binding("f3", "info", "Chat info", priority=True),
         Binding("f1", "help", "Help", priority=True),
-        Binding("f2", "keys", "Keys", priority=True),
-        Binding("f3", "share", "Share", priority=True),
-        Binding("f4", "toggle_signed", "Sealed/Signed", priority=True),
-        Binding("f5", "lock", "Lock", priority=True),
-        Binding("f6", "whoami", "Me", priority=True),
-        Binding("f7", "radio_settings", "Radio", priority=True),
         Binding("ctrl+q", "quit", "Quit", priority=True),
+        Binding("escape", "focus_list", "Chats", show=False),
+        Binding("alt+down", "next_channel", "Next chat", show=False, priority=True),
+        Binding("alt+up", "prev_channel", "Previous chat", show=False, priority=True),
+        Binding("ctrl+p", "prev_channel", "Previous chat", show=False, priority=True),
+        Binding("f4", "toggle_signed", "Sealed/Signed", show=False, priority=True),
+        Binding("f5", "lock", "Lock", show=False, priority=True),
+        Binding("f6", "whoami", "Me", show=False, priority=True),
+        Binding("f7", "radio_settings", "Radio", show=False, priority=True),
+        Binding("f8", "resend", "Resend", show=False, priority=True),
+        Binding("f9", "radio_log", "Radio log", show=False, priority=True),
     ]
 
     def __init__(self, args):
         super().__init__()
         self.args = args
         self.node: Node | None = None
-        self.channel = "all"
+        self.channel = "public"
         self.signed = False
+        self.new_chat: NewChatScreen | None = None
+        self.had_radio = False
         self.history: list[Msg] = []
         self.unread: dict[str, int] = {}
-        self.items: list[ChannelItem] = []
+        self.items: list[ChatItem] = []
         self.rows: list[ListItem] = []
         self._last_index = 0
         self.last_activity = time.monotonic()
@@ -863,8 +1141,8 @@ class RadioApp(App):
 
     def on_mount(self) -> None:
         self.query_one("#message", Input).disabled = True
-        self.query_one("#sidebar").border_title = "Channels"
-        self.query_one("#log").border_title = "Messages"
+        self.query_one("#sidebar").border_title = "Chats"
+        self.query_one("#log").border_title = "Public"
         self.set_interval(1.0, self.update_topbar)
         self.push_screen(LoginScreen(self.args), self._login_done)
 
@@ -897,7 +1175,7 @@ class RadioApp(App):
             self.push_screen(LoginScreen(a, error=str(e)), self._login_done)
 
     def _open_node(self) -> None:
-        self.sys(f"Opening {self.args.port} ({self.args.hw.name})…")
+        self.sys("Starting…" if self.args.port == AUTO_PORT else f"Opening {self.args.port} ({self.args.hw.name})…")
         self.node = Node(self.args.port, self.args.baud, self.args.nick, self.args.keys,
                          self.args.db, fetch_snr=not self.args.no_snr,
                          passphrase=self.args.passphrase,
@@ -908,6 +1186,8 @@ class RadioApp(App):
                          on_msg=lambda m: self.call_from_thread(self.add_msg, m),
                          on_update=lambda m: self.call_from_thread(self._tx_updated, m),
                          on_log=lambda s: self.call_from_thread(self.sys, s))
+        self.node.on_lookup = lambda r: self.call_from_thread(self._lookup_result, r)
+        self.node.on_radio = lambda st: self.call_from_thread(self._radio_state, st)
         self.args.passphrase = None                 # don't keep it around
         self.history = self.node.history(300) + self.history
         self.redraw()
@@ -931,17 +1211,19 @@ class RadioApp(App):
         self.call_from_thread(self._radio_ready, problems)
 
     def _radio_ready(self, problems: list[str]) -> None:
-        if problems:
+        self.had_radio = self.node.connected
+        if not self.node.connected:
+            self.sys(f"no radio yet: plug in the LA66 to send - TextCast connects by itself. "
+                     f"Your number is {format_number(self.node.number)}.")
+        elif problems:
             self.sys("WARNING - LA66 configuration mismatch:")
             for p in problems:
                 self.sys("   " + p)
             self.sys("check that this is the LA66 port and it runs the P2P firmware; "
                      "F7 opens the radio settings")
         else:
-            self.sys(f"connected - LA66 firmware {self.node.firmware}, radio profile "
-                     + ("applied" if self.node.applied else "OK")
-                     + f" ({PROFILE.name} · {PROFILE.freq_mhz:.3f} MHz · SF{PROFILE.sf}). "
-                       "Press F1 for help.")
+            self.sys(f"radio ready ({PROFILE.freq_mhz:.3f} MHz · SF{PROFILE.sf}). "
+                     f"Your number is {format_number(self.node.number)}. Ctrl+N adds a person, F1 helps.")
         self.run_worker(self.rebuild_sidebar(), exclusive=True)
         inp = self.query_one("#message", Input)
         inp.disabled = False
@@ -953,53 +1235,43 @@ class RadioApp(App):
     async def rebuild_sidebar(self) -> None:
         lv = self.query_one("#sidebar", ListView)
         await lv.clear()
-        chans = self.node.channels()
-        by_type = {t: [c for c, ct in chans if ct == t] for t in TYPE_ICON}
-        self.rows, self.items = [], []
-        for title, types in (("Overview", ("all", "public")), ("Groups", ("group",)),
-                             ("My streams", ("own",)), ("Following", ("follow",)),
-                             ("Other", ("other",))):
-            names = [(c, t) for t in types for c in by_type.get(t, [])]
-            if not names:
-                continue
-            self.rows.append(SectionItem(title))
-            for c, t in names:
-                item = ChannelItem(c, t)
-                self.rows.append(item)
-                self.items.append(item)
-        for row in self.rows:
-            await lv.append(row)
+        chats = [(c, t) for c, t in self.node.channels() if t in CHAT_TYPES]
+        last = {c: self._last(c) for c, _ in chats}
+        chats.sort(key=lambda x: (x[1] != "public", -(last[x[0]].ts if last[x[0]] else 0),
+                                  self.node.channel_title(x[0]).lower()))
+        self.items = [ChatItem(c, t, "Public" if t == "public" else self.node.channel_title(c)) for c, t in chats]
+        self.rows = list(self.items)
         for it in self.items:
-            it.set_unread(self.unread.get(it.channel, 0))
+            await lv.append(it)
+            it.show(last[it.channel], self.unread.get(it.channel, 0))
         if self.channel not in [it.channel for it in self.items]:
-            self.channel = "all"
-        idx = next(i for i, r in enumerate(self.rows)
-                   if isinstance(r, ChannelItem) and r.channel == self.channel)
+            self.channel = "public"
+        idx = next(i for i, r in enumerate(self.items) if r.channel == self.channel)
         self._last_index = idx
         lv.index = idx
         self.update_target()
 
-    def _next_channel_row(self, idx: int, step: int):
-        n = len(self.rows)
-        for k in range(1, n + 1):
-            j = (idx + step * k) % n
-            if isinstance(self.rows[j], ChannelItem):
-                return j
+    def refresh_chats(self, channel: str | None = None) -> None:
+        if channel:
+            self.switch_channel(channel)
+        self.run_worker(self.rebuild_sidebar(), exclusive=True)
+
+    def _last(self, channel: str) -> Msg | None:
+        for m in reversed(self.history):
+            if m.channel == channel and m.direction != "sys":
+                return m
         return None
+
+    def _show_item(self, channel: str) -> None:
+        for it in self.items:
+            if it.channel == channel:
+                it.show(self._last(channel), self.unread.get(channel, 0))
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         item = event.item
-        lv = self.query_one("#sidebar", ListView)
-        if isinstance(item, SectionItem):                # skip headings
-            idx = lv.index or 0
-            j = self._next_channel_row(idx, 1 if idx >= self._last_index else -1)
-            if j is not None and j != idx:
-                lv.index = j
-            return
-        if isinstance(item, ChannelItem):
-            self._last_index = lv.index or 0
-            if item.channel != self.channel:
-                self.switch_channel(item.channel)
+        if isinstance(item, ChatItem) and item.channel != self.channel:
+            self._last_index = self.query_one("#sidebar", ListView).index or 0
+            self.switch_channel(item.channel)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         self.query_one("#message", Input).focus()
@@ -1007,19 +1279,15 @@ class RadioApp(App):
     def switch_channel(self, channel: str) -> None:
         self.channel = channel
         self.unread[channel] = 0
-        for it in self.items:
-            if it.channel == channel:
-                it.set_unread(0)
+        self._show_item(channel)
         self.redraw()
         self.update_target()
 
     def _move(self, step: int) -> None:
-        if not self.rows:
+        if not self.items:
             return
         lv = self.query_one("#sidebar", ListView)
-        j = self._next_channel_row(lv.index or 0, step)
-        if j is not None:
-            lv.index = j
+        lv.index = ((lv.index or 0) + step) % len(self.items)
 
     def action_next_channel(self) -> None:
         self._move(1)
@@ -1027,10 +1295,13 @@ class RadioApp(App):
     def action_prev_channel(self) -> None:
         self._move(-1)
 
+    def action_focus_list(self) -> None:
+        self.query_one("#sidebar", ListView).focus()
+
     # -- messages ------------------------------------------------------------
 
     def visible(self, m: Msg) -> bool:
-        return (self.channel == "all" or m.direction == "sys" or m.channel == self.channel)
+        return m.direction == "sys" or m.channel == self.channel
 
     def add_msg(self, m: Msg) -> None:
         self.history.append(m)
@@ -1038,13 +1309,16 @@ class RadioApp(App):
             self.history = self.history[-3000:]
         if self.visible(m):
             self._write(m)
-        elif m.direction == "rx":
+        elif m.direction == "rx" and m.kind not in ("undecoded", "locked"):
             self.unread[m.channel] = self.unread.get(m.channel, 0) + 1
-            for it in self.items:
-                if it.channel == m.channel:
-                    it.set_unread(self.unread[m.channel])
+        if m.direction == "sys":
+            return
         if m.kind == "join" and m.direction == "rx":
             self.run_worker(self.rebuild_sidebar(), exclusive=True)
+        elif self.items and self.items[0].channel != m.channel and m.channel in [i.channel for i in self.items]:
+            self.run_worker(self.rebuild_sidebar(), exclusive=True)      # newest chat moves up
+        else:
+            self._show_item(m.channel)
 
     def _write(self, m: Msg) -> None:
         log = self.query_one("#log", RichLog)
@@ -1052,7 +1326,7 @@ class RadioApp(App):
         if day != getattr(self, "_last_day", None):
             log.write(day_rule(m.ts))
             self._last_day = day
-        log.write(render(m, self.channel == "all"))
+        log.write(render(m, self.node.channel_type(self.channel) if self.node else "public"))
 
     def sys(self, text: str) -> None:
         self.add_msg(Msg(time.time(), "sys", "plain", "all", None, text))
@@ -1070,6 +1344,7 @@ class RadioApp(App):
         recent = [x for x in self.history[-50:] if self.visible(x)]
         if any(x is m for x in recent):
             self.redraw()
+        self._show_item(m.channel)
 
     # -- input ---------------------------------------------------------------
 
@@ -1077,28 +1352,27 @@ class RadioApp(App):
         if not self.node:
             return
         ctype = self.node.channel_type(self.channel)
-        icon = TYPE_ICON.get(ctype, "·")
         label = self.query_one("#target", Label)
         inp = self.query_one("#message", Input)
-        name = "Public" if ctype in ("all", "public") else self.channel
-        if ctype in ("follow", "other"):
-            desc, cls = f"{icon} {name} · read-only", "readonly"
-            inp.placeholder = "read-only channel - switch with Ctrl+N / Ctrl+P to write"
+        name = "Public" if ctype in ("all", "public") else self.node.channel_title(self.channel)
+        desc = CHANNEL_DESC.get(ctype, "")
+        if ctype == "direct":
+            c = next((x for x in self.node.keys.contact_info() if "@" + x["handle"] == self.channel), None) \
+                if not self.node.locked else None
+            if c:
+                desc += " · " + format_number(c["number"])
+            cls, inp.placeholder = "private", f"private message to {name}"
+        elif ctype in ("follow", "other"):
+            cls, inp.placeholder = "readonly", "read-only: only the owner posts here"
         elif ctype in ("group", "own"):
-            mode = "signed" if self.signed else "sealed"
-            desc, cls = f"{icon} {name} · {mode}", "private"
-            inp.placeholder = (f"message to {name} - readable by everyone, verifiable by key holders"
-                               if self.signed else f"message to {name} - only key holders can read")
+            cls = "private"
+            inp.placeholder = f"message to {name}" + (" (signed: readable by everyone)" if self.signed else "")
         else:
-            desc, cls = "○ Public · plain", "public"
-            inp.placeholder = "message to everyone - plain text, anyone can read"
-        label.update(Text(desc))
+            cls, inp.placeholder = "public", "message to everyone nearby"
+        label.update(Text(f"{TYPE_ICON.get(ctype, '·')} {name[:16]}"))
         for c in ("public", "private", "readonly"):
             label.set_class(c == cls, c)
-        title_name = {"all": "All messages", "public": "Public", "other": "Undecodable"}.get(
-            self.channel, self.channel) if ctype in ("all", "public", "other") else self.channel
-        self.query_one("#log").border_title = escape(
-            f"{icon} {title_name}  ·  {CHANNEL_DESC.get(ctype, '')}")
+        self.query_one("#log").border_title = escape(f"{TYPE_ICON.get(ctype, '·')} {name}  ·  {desc}")
         self.update_count(inp.value)
 
     def update_count(self, text: str) -> None:
@@ -1106,8 +1380,8 @@ class RadioApp(App):
             return
         n, mx = self.node.byte_count(self.channel, text), PROFILE.max_payload
         bar = self.query_one("#inputbar")
-        bar.border_subtitle = (f"[b red]{n} / {mx} bytes - too long[/]" if n > mx
-                               else f"{n} / {mx} bytes")
+        bar.border_subtitle = (f"[b red]{n} / {mx} bytes - too long for one radio message[/]" if n > mx
+                               else f"{n} / {mx} bytes" if n > mx * 0.7 else "")
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "message":
@@ -1150,6 +1424,14 @@ class RadioApp(App):
             self.action_whoami()
         elif cmd == "/radio":
             self.action_radio_settings()
+        elif cmd == "/resend":
+            self.action_resend()
+        elif cmd == "/add":
+            self.action_new_chat(arg)
+        elif cmd == "/number":
+            self.sys(f"your TextCast number: {format_number(self.node.number)}")
+        elif cmd == "/log":
+            self.action_radio_log()
         elif cmd == "/contacts":
             self.push_screen(InfoScreen("Contacts", Text("\n".join(self.node.contacts()))))
         elif cmd == "/contact":
@@ -1182,6 +1464,63 @@ class RadioApp(App):
             self._notify(f"unknown command {cmd} (F1 for help)", severity="warning")
 
     # -- actions -------------------------------------------------------------
+
+    def action_new_chat(self, number: str = "") -> None:
+        if not self.node or self.node.locked:
+            return
+        self.new_chat = NewChatScreen(self.node)
+
+        def done(channel) -> None:
+            self.new_chat = None
+            if channel:
+                self.refresh_chats(channel)
+        self.push_screen(self.new_chat, done)
+        if number:
+            def go() -> None:
+                self.new_chat.query_one("#num", Input).value = number
+                self.new_chat.query_one("#find", Button).press()
+            self.call_after_refresh(go)
+
+    def _lookup_result(self, r: dict) -> None:
+        if self.new_chat is not None:
+            self.new_chat.lookup_result(r)
+
+    def _radio_state(self, state: str) -> None:
+        if state == "lost":
+            self.sys("radio unplugged - plug it back in, TextCast reconnects by itself")
+        elif state == "back":
+            first, self.had_radio = not self.had_radio, True
+            self.sys(f"radio {'connected' if first else 'back'} ({PROFILE.freq_mhz:.3f} MHz · SF{PROFILE.sf})")
+        else:
+            self.sys("radio back, but " + state.partition(": ")[2])
+        self.update_topbar()
+
+    def action_info(self) -> None:
+        if not self.node:
+            return
+
+        def done(result) -> None:
+            if result == "deleted":
+                self.channel = "public"
+            if result:
+                self.refresh_chats()
+        self.push_screen(ChatInfoScreen(self.node, self.channel), done)
+
+    def action_settings(self) -> None:
+        if not self.node:
+            return
+
+        def done(choice) -> None:
+            {"whoami": self.action_whoami, "radio": self.action_radio_settings, "log": self.action_radio_log,
+             "keys": self.action_keys, "lock": self.action_lock}.get(choice, lambda: None)()
+        self.push_screen(SettingsScreen(self.node), done)
+
+    def action_radio_log(self) -> None:
+        if not self.node:
+            return
+        lines = [render_log(m, self.node.channel_title) for m in self.history[-300:] if m.direction != "sys"]
+        body = Text("\n").join(reversed(lines)) if lines else Text("Nothing heard yet.", style="grey58")
+        self.push_screen(InfoScreen("Radio log (newest first)", body, wide=True))
 
     def action_help(self) -> None:
         self.push_screen(InfoScreen("Help", Text.from_markup(HELP), wide=True))
@@ -1330,6 +1669,23 @@ class RadioApp(App):
                     style="grey58")
         self.push_screen(InfoScreen("Who am I", body, copy=lid))
 
+    def action_resend(self) -> None:
+        """Resend the latest private message that was not confirmed (this channel first)."""
+        if not self.node:
+            return
+        todo = [m for m in self.history if m.kind == "direct" and m.direction == "tx"
+                and m.status in ("unconfirmed", "failed")]
+        here = [m for m in todo if m.channel == self.channel]
+        m = (here or todo or [None])[-1]
+        if m is None:
+            self._notify("nothing to resend: every private message was confirmed", severity="information")
+            return
+        try:
+            self.node.resend(m)
+            self.redraw()
+        except KeyError_ as e:
+            self._notify(str(e), severity="error")
+
     def action_toggle_signed(self) -> None:
         self.signed = not self.signed
         self.update_target()
@@ -1347,19 +1703,24 @@ class RadioApp(App):
         left = Text()
         left.append("TextCast", style="bold")
         left.append("   ")
-        left.append(self.node.handle or "(no nick)", style="bold")
+        left.append(self.node.nick or "(no nick)", style="bold")
+        if not self.node.locked:
+            left.append(f"  {format_number(self.node.number)}", style="grey74")
         if self.node.locked:
             left.append("  LOCKED ", style="bold white on red")
         elif not self.node.protected:
-            left.append("  UNPROTECTED ", style="bold black on yellow")
+            left.append("  no passphrase ", style="black on yellow")
         right = Text()
-        right.append(f"{PROFILE.name} · {PROFILE.freq_mhz:.3f} MHz · SF{PROFILE.sf} · "
-                     f"BW {PROFILE.bw_hz / 1000:g}", style="grey74")
-        right.append(f"   TX {s['duty']:.1f}%", style="grey74")
-        if s["queue"]:
-            right.append(f"   queue {s['queue']}", style="yellow")
-        if s["wait"] > 0.5:
-            right.append(f"   next slot {s['wait']:.0f}s", style="yellow")
+        if not self.node.connected:
+            right.append("○ Radio unplugged - plug it back in" if self.node.applied or self.had_radio
+                         else "○ No radio - plug it in to send", style="bold black on yellow")
+        else:
+            right.append("● ", style="bold green")
+            right.append(f"Radio on · {PROFILE.freq_mhz:.1f} MHz · SF{PROFILE.sf}", style="grey74")
+            if s["queue"]:
+                right.append(f"   {s['queue']} waiting", style="yellow")
+            if s["wait"] > 0.5 and s["queue"]:
+                right.append(f" (about {s['wait']:.0f} s)", style="yellow")
         self.query_one("#top-left", Static).update(left)
         self.query_one("#top-right", Static).update(right)
 

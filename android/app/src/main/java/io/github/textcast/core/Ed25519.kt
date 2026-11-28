@@ -95,6 +95,17 @@ object Ed25519 {
 
     fun publicKey(seed: ByteArray): ByteArray = compress(mul(expand(seed).first, G))
 
+    /**
+     * Diffie-Hellman with the identity keys themselves: a_me * A_peer == a_peer * A_me.
+     * Null for a key that is not a point or gives the neutral point (small order).
+     */
+    fun sharedPoint(seed: ByteArray, peerPublic: ByteArray): ByteArray? {
+        val a = decompress(peerPublic) ?: return null
+        val s = mul(expand(seed).first, a)
+        if (equal(s, Pt(BigInteger.ZERO, BigInteger.ONE, BigInteger.ONE, BigInteger.ZERO))) return null
+        return compress(s)
+    }
+
     fun sign(seed: ByteArray, msg: ByteArray): ByteArray {
         val (a, prefix) = expand(seed)
         val pub = compress(mul(a, G))

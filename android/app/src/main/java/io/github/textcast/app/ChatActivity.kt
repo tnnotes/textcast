@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
 import android.text.SpannableStringBuilder
@@ -18,22 +19,19 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AbsListView
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.BaseAdapter
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ListView
-import android.widget.Spinner
 import android.widget.TextView
 import io.github.textcast.R
 import io.github.textcast.core.KeyException
+import io.github.textcast.core.Keyring
 import io.github.textcast.core.Msg
 import io.github.textcast.core.Node
+import io.github.textcast.core.Numbers
 import io.github.textcast.core.PayloadTooLong
-import io.github.textcast.core.Protocol
-import io.github.textcast.core.WrongPassphrase
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -41,12 +39,12 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Chat screen, compact log style: every message left-aligned with a coloured
- * sender line, then the text. Own messages have an accent stripe; system and
- * join notes are small centred pills; a date line separates days.
+ * One conversation, like a phone messenger: their messages on the left (with the
+ * sender's name in Public and groups), mine on the right with ✓ sent and ✓✓
+ * delivered. Tap a message that was not delivered to send it again; long-press
+ * for details. The Info menu shows the person's number or the group's invite.
  */
 class ChatActivity : Activity(), Session.Listener {
-    private lateinit var channel: Spinner
     private lateinit var status: TextView
     private lateinit var list: ListView
     private lateinit var empty: TextView
@@ -55,13 +53,12 @@ class ChatActivity : Activity(), Session.Listener {
     private lateinit var signed: TextView
     private lateinit var sendBtn: ImageButton
 
-    private var channels: List<Pair<String, String>> = emptyList()
-    private var current = "all"
+    private var current = "public"
     private val rows = ArrayList<Row>()
     private val adapter = MsgAdapter()
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val tick = object : Runnable {
-        override fun run() { updateStatus(); session.main.postDelayed(this, 5000) }
+        override fun run() { updateStatus(); session.main.postDelayed(this, 3000) }
     }
 
     private val node: Node? get() = session.node
@@ -85,23 +82,9 @@ class ChatActivity : Activity(), Session.Listener {
         sendBtn = findViewById(R.id.send)
         list.adapter = adapter
         list.emptyView = empty
-        current = savedInstanceState?.getString("channel") ?: "all"
-
-        // channel picker in the title bar
-        val bar = actionBar
-        channel = Spinner(bar?.themedContext ?: this)
-        if (bar != null) {
-            bar.setDisplayShowTitleEnabled(false)
-            bar.setDisplayShowCustomEnabled(true)
-            bar.customView = channel
-        }
-        channel.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                val c = channels.getOrNull(pos)?.first ?: "all"
-                if (c != current) { current = c; channelChanged() }
-            }
-            override fun onNothingSelected(p: AdapterView<*>?) {}
-        }
+        list.setBackgroundColor(color(R.color.chat_wall))
+        current = savedInstanceState?.getString("channel") ?: intent.getStringExtra(EXTRA_CHANNEL) ?: "public"
+        actionBar?.setDisplayHomeAsUpEnabled(true)
 
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -113,11 +96,16 @@ class ChatActivity : Activity(), Session.Listener {
         list.setOnItemLongClickListener { _, _, pos, _ ->
             (rows.getOrNull(pos) as? Row.Item)?.let { messageMenu(it.m) }; true
         }
-
-        session.startProblems.takeIf { it.isNotEmpty() }?.let {
-            session.addSystem("radio check: " + it.joinToString("; "))
+        list.setOnItemClickListener { _, _, pos, _ ->           // tap a "not delivered" message to resend
+            (rows.getOrNull(pos) as? Row.Item)?.m?.takeIf { canResend(it) }?.let { resend(it) }
         }
-        refreshChannels()
+        status.setOnClickListener { if (node?.radio == null) session.reattach() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_CHANNEL)?.let { current = it; channelChanged() }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -127,18 +115,23 @@ class ChatActivity : Activity(), Session.Listener {
 
     override fun onResume() {
         super.onResume()
-        if (node == null) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        val n = node
+        if (n == null) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (n.channels().none { it.first == current }) { finish(); return }      // deleted, or locked away
         session.addListener(this)
         session.visible = true
+        session.openChannel = current
+        session.unreadBy.remove(current)
         session.unread = 0
         RadioService.update(this, 0, null)
-        refreshChannels()
+        channelChanged()
         session.main.post(tick)
     }
 
     override fun onPause() {
         session.removeListener(this)
         session.visible = false
+        session.openChannel = null
         session.main.removeCallbacks(tick)
         super.onPause()
     }
@@ -147,7 +140,7 @@ class ChatActivity : Activity(), Session.Listener {
 
     override fun onMessage(m: Msg) {
         if (matches(m)) { appendRow(m); adapter.notifyDataSetChanged() }
-        if (m.kind == "join") refreshChannels()
+        session.unreadBy.remove(current)
     }
 
     override fun onUpdate(m: Msg) { adapter.notifyDataSetChanged(); updateStatus() }
@@ -155,34 +148,15 @@ class ChatActivity : Activity(), Session.Listener {
     override fun onLog(text: String) = rebuild()
 
     override fun onState() {
-        if (node == null) { startActivity(Intent(this, LoginActivity::class.java)); finish() } else refreshChannels()
+        val n = node
+        if (n == null) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+        if (n.channels().none { it.first == current }) { finish(); return }
+        rebuild(); updateStatus()
     }
 
-    // -- channels and messages --------------------------------------------------------------
+    // -- messages -----------------------------------------------------------------------------
 
-    private fun channelLabel(c: Pair<String, String>): String = when (c.second) {
-        "all" -> "All"
-        "public" -> "Public"
-        "other" -> "Other"
-        "group" -> "👥 ${c.first}"
-        "own" -> "📣 ${c.first}"
-        "follow" -> "👁 ${c.first}"
-        else -> c.first
-    }
-
-    private fun refreshChannels() {
-        val n = node ?: return
-        channels = n.channels()
-        val a = ArrayAdapter(channel.context, R.layout.title_spinner_item, channels.map { channelLabel(it) })
-        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        channel.adapter = a
-        val idx = channels.indexOfFirst { it.first == current }.let { if (it < 0) 0 else it }
-        current = channels.getOrNull(idx)?.first ?: "all"
-        channel.setSelection(idx)
-        channelChanged()
-    }
-
-    private fun matches(m: Msg): Boolean = current == "all" || m.channel == current || m.direction == "sys"
+    private fun matches(m: Msg): Boolean = m.channel == current || m.direction == "sys"
 
     private fun dayKey(ts: Double): Int {
         val c = Calendar.getInstance().apply { timeInMillis = (ts * 1000).toLong() }
@@ -203,7 +177,7 @@ class ChatActivity : Activity(), Session.Listener {
 
     private fun appendRow(m: Msg) {
         val k = dayKey(m.ts)
-        if (k != lastDay) { rows.add(Row.Day(dayLabel(m.ts))); lastDay = k }
+        if (k != lastDay && m.direction != "sys") { rows.add(Row.Day(dayLabel(m.ts))); lastDay = k }
         rows.add(Row.Item(m))
     }
 
@@ -215,29 +189,50 @@ class ChatActivity : Activity(), Session.Listener {
         list.setSelection(rows.size - 1)
     }
 
+    private fun canResend(m: Msg) = m.kind == "direct" && m.direction == "tx" && m.status in setOf("unconfirmed", "failed")
+
+    private fun resend(m: Msg) {
+        val n = node ?: return
+        if (n.radio == null) { toast("Plug the radio in first"); return }
+        try { n.resend(m); toast("Sending it again…"); adapter.notifyDataSetChanged() } catch (e: Exception) { toast(e.text()) }
+    }
+
     private fun emptyHint(type: String): String {
-        val p = Protocol.profile
+        val who = node?.channelTitle(current) ?: current
         return when (type) {
-            "all" -> "No messages yet.\nEverything heard on ${String.format(Locale.ROOT, "%.3f", p.freqMhz)} MHz appears here."
-            "public" -> "No public messages yet.\nPublic messages are plain text: anyone in range can read them."
-            "group" -> "No messages in $current yet.\nMessages here are sealed: only members can read them."
-            "own" -> "Nothing posted to $current yet.\nFollowers with the stream string can read your posts."
-            "follow" -> "Nothing from $current yet.\nYou can read this stream but not post to it."
-            else -> "Packets that nobody here can decode appear here."
+            "direct" -> "🔒 Messages to $who are private: only $who's device can read them.\n\n✓✓ means $who's device got the message."
+            "public" -> "📢 Everyone within radio range can read what you write here."
+            "group" -> "🔒 Only members of $current can read messages here."
+            "own" -> "Your channel: you post, people with its string read."
+            "follow" -> "You can read this channel but not post to it."
+            else -> ""
         }
+    }
+
+    private fun contact(): Keyring.ContactInfo? {
+        val n = node ?: return null
+        if (!current.startsWith("@") || n.locked) return null
+        return n.keys.contactInfo().firstOrNull { "@" + it.handle == current }
     }
 
     private fun channelChanged() {
         val n = node ?: return
         val type = n.channelType(current)
         val canSend = n.canSend(current)
+        actionBar?.title = if (type == "public") "Public" else n.channelTitle(current)
+        actionBar?.subtitle = when (type) {
+            "public" -> "Everyone nearby can read"
+            "direct" -> "🔒 Private" + (contact()?.let { " · " + Numbers.format(it.number) } ?: "")
+            "group" -> "🔒 Group"
+            "own" -> "Your channel"
+            else -> "Channel · read only"
+        }
         input.isEnabled = canSend
+        (input.parent as? View)?.visibility = if (canSend) View.VISIBLE else View.GONE
         input.hint = when (type) {
-            "all", "public" -> "Message to everyone"
-            "group" -> "Message to $current  🔒"
-            "own" -> "Post to $current  🔒"
-            "follow" -> "Read only"
-            else -> "Read only"
+            "public" -> "Message everyone nearby"
+            "direct" -> "Private message"
+            else -> "Message"
         }
         empty.text = emptyHint(type)
         signed.visibility = if (type == "group" || type == "own") View.VISIBLE else View.GONE
@@ -245,44 +240,42 @@ class ChatActivity : Activity(), Session.Listener {
         rebuild()
         updateCount()
         updateStatus()
+        invalidateOptionsMenu()
     }
 
     private fun updateCount() {
         val n = node ?: return
         val used = n.byteCount(current, input.text.toString())
         val max = n.maxBytes
-        sendBtn.isEnabled = used > 0 && n.canSend(current)
+        sendBtn.isEnabled = used in 1..max && n.canSend(current)
         sendBtn.alpha = if (sendBtn.isEnabled) 1f else 0.35f
         if (used >= max * 0.7) {
             count.visibility = View.VISIBLE
-            count.text = if (used > max) "$used / $max bytes - too long" else "$used / $max bytes"
+            count.text = if (used > max) "$used / $max bytes - too long for one radio message" else "$used / $max bytes"
             count.setTextColor(color(if (used > max) R.color.text_error else R.color.text_meta))
         } else count.visibility = View.GONE
     }
 
+    /** Shown only when something needs attention: radio unplugged, messages waiting. */
     private fun updateStatus() {
         val n = node ?: return
-        val p = Protocol.profile
         val st = n.stats()
-        val parts = ArrayList<String>()
-        parts.add((if (n.locked) "🔒 " else "") + (n.handle ?: n.nick ?: ""))
-        if (n.radio == null) parts.add("offline")
-        else {
-            parts.add("${p.name} ${String.format(Locale.ROOT, "%.3f", p.freqMhz)} MHz")
-            if (st.dutyLimitPct > 0) parts.add("duty ${String.format(Locale.ROOT, "%.1f", st.dutyPct)}/${fmt(st.dutyLimitPct)} %")
+        val text: String? = when {
+            session.reconnecting -> "Reconnecting the radio…"
+            n.radio == null -> if (session.deviceLabel == null) "No radio · plug it in to send" else "Radio unplugged · plug it back in"
+            st.queue > 0 -> "${st.queue} waiting to send" + (if (st.waitS >= 1) " (about ${st.waitS.toInt()} s)" else "")
+            else -> null
         }
-        if (st.queue > 0) parts.add("${st.queue} waiting" + if (st.waitS >= 1) " ${st.waitS.toInt()} s" else "")
-        status.text = parts.joinToString("  ·  ")
-        val warn = n.radio == null || n.locked || st.queue > 0
-        status.setBackgroundColor(color(if (warn) R.color.status_warn_bg else R.color.status_bg))
+        status.visibility = if (text == null) View.GONE else View.VISIBLE
+        status.text = text ?: ""
+        status.setBackgroundColor(color(R.color.status_warn_bg))
     }
-
-    private fun fmt(v: Double) = if (v == Math.floor(v)) v.toLong().toString() else v.toString()
 
     private fun send() {
         val n = node ?: return
         val text = input.text.toString().trim()
         if (text.isEmpty()) return
+        if (n.radio == null) { toast("Plug the radio in first"); return }
         try {
             val m = n.send(current, text, signed.isSelected)
             session.addMessage(m)
@@ -290,7 +283,7 @@ class ChatActivity : Activity(), Session.Listener {
             rebuild()
             updateStatus()
         } catch (e: PayloadTooLong) {
-            toast("Too long: ${e.text()}")
+            toast("Too long for one radio message: shorten it")
         } catch (e: KeyException) {
             toast(e.text())
         } catch (e: Exception) {
@@ -298,15 +291,76 @@ class ChatActivity : Activity(), Session.Listener {
         }
     }
 
+    private fun details(m: Msg): String {
+        val parts = ArrayList<String>()
+        parts.add(DateFormat.getDateTimeInstance().format(Date((m.ts * 1000).toLong())))
+        if (m.rssi != null) parts.add("Signal ${m.rssi} dBm" + (m.snr?.let { " · SNR $it dB" } ?: ""))
+        parts.add("${m.size} bytes" + (m.airtime?.let { " · ${it.toInt()} ms on air" } ?: ""))
+        if (m.kind == "signed") parts.add("Signed")
+        if (m.verified && m.direction == "rx" && !m.group) parts.add("✓ sent with a key you hold")
+        return parts.joinToString("\n")
+    }
+
     private fun messageMenu(m: Msg) {
-        val items = mutableListOf("Copy text")
-        if (m.sender != null && m.direction == "rx") items.add("Reply to ${m.sender}")
+        if (m.direction == "sys") return
+        val items = mutableListOf("Copy text", "Details")
+        if (canResend(m)) items.add(0, "Send again")
         AlertDialog.Builder(this).setItems(items.toTypedArray()) { _, which ->
-            when (which) {
-                0 -> copyText("message", m.text)
-                1 -> { input.setText("@${m.sender?.substringBefore('#')} "); input.setSelection(input.text.length) }
+            when (items[which]) {
+                "Send again" -> resend(m)
+                "Copy text" -> copyText("message", m.text)
+                else -> info("Message", details(m))
             }
         }.show()
+    }
+
+    // -- info about the chat ---------------------------------------------------------------------
+
+    private fun showInfo() {
+        val n = node ?: return
+        val type = n.channelType(current)
+        when (type) {
+            "direct" -> {
+                val c = contact()
+                val msg = (c?.let {
+                    "TextCast number ${Numbers.format(it.number)}\n\n" +
+                        (if (it.verified) "✓ Added with their identity string."
+                         else "Added by number. To be sure it's really them, check the number with them.")
+                } ?: "") + "\n\nName on the radio: ${current.drop(1)}"
+                AlertDialog.Builder(this).setTitle(n.channelTitle(current)).setMessage(msg)
+                    .setPositiveButton("Rename") { _, _ -> rename(n) }
+                    .setNeutralButton("Delete") { _, _ ->
+                        confirm("Delete ${n.channelTitle(current)}", "Remove this person? You can add them again with their number.", "Delete") {
+                            n.contactDel(current.drop(1)); finish()
+                        }
+                    }
+                    .setNegativeButton("Close", null).show()
+            }
+            "public" -> info("Public", "Everyone within radio range, with TextCast on the same settings, reads the Public chat. " +
+                "Don't write anything private here: use a private chat (+ and their number).\n\nYou appear as ${n.callsign ?: ""}.")
+            else -> KeysUi(this, n, { if (n.channels().none { it.first == current }) finish() else channelChanged() })
+                .keyActions(current, type)
+        }
+    }
+
+    private fun rename(n: Node) {
+        val f = field("Name", value = n.channelTitle(current))
+        form("Rename", null, listOf(f), "Save") {
+            try { n.keys.renameContact(current.drop(1), f.text.toString()); channelChanged(); null } catch (e: KeyException) { e.text() }
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(0, M_INFO, 0, R.string.menu_info).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            android.R.id.home -> finish()
+            M_INFO -> showInfo()
+        }
+        return true
     }
 
     // -- rows ---------------------------------------------------------------------------------
@@ -323,7 +377,7 @@ class ChatActivity : Activity(), Session.Listener {
         return senderColors[Math.abs(h % senderColors.size)]
     }
 
-    private class MsgHolder(val stripe: View, val text: TextView)
+    private class MsgHolder(val box: LinearLayout, val text: TextView)
 
     private inner class MsgAdapter : BaseAdapter() {
         override fun getCount() = rows.size
@@ -342,34 +396,35 @@ class ChatActivity : Activity(), Session.Listener {
         }
     }
 
+    private fun bubble(mine: Boolean) = GradientDrawable().apply {
+        cornerRadius = dp(12).toFloat()
+        setColor(color(if (mine) R.color.bubble_mine else R.color.bubble_them))
+    }
+
     private fun messageView(m: Msg, convertView: View?): View {
-        val row: LinearLayout
         val h: MsgHolder
-        if (convertView?.tag is MsgHolder) {
-            row = convertView as LinearLayout
-            h = convertView.tag as MsgHolder
-        } else {
-            row = LinearLayout(this).apply {
+        if (convertView?.tag is MsgHolder) h = convertView.tag as MsgHolder
+        else {
+            val box = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                setPadding(dp(4), dp(2), dp(4), dp(2))
             }
-            val stripe = View(this)
-            row.addView(stripe, LinearLayout.LayoutParams(dp(3), ViewGroup.LayoutParams.MATCH_PARENT))
             val tv = TextView(this).apply {
-                setPadding(dp(10), dp(6), dp(10), dp(7))
-                textSize = 15f
-                setLineSpacing(dp(2).toFloat(), 1f)
+                setPadding(dp(11), dp(6), dp(11), dp(6))
+                textSize = 15.5f
+                maxWidth = (resources.displayMetrics.widthPixels * 0.8).toInt()
+                setTextColor(color(R.color.text_plain))
             }
-            row.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            h = MsgHolder(stripe, tv)
-            row.tag = h
+            box.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            h = MsgHolder(box, tv)
+            box.tag = h
         }
         val mine = m.direction == "tx"
-        row.setBackgroundResource(if (mine) R.drawable.bg_row_me else 0)
-        h.stripe.setBackgroundColor(if (mine) color(R.color.accent) else 0)
-        row.setPadding(0, dp(1), 0, dp(1))
+        h.box.gravity = if (mine) Gravity.END else Gravity.START
+        h.text.background = bubble(mine)
         h.text.text = render(m)
-        return row
+        return h.box
     }
 
     private fun pillView(r: Row, convertView: View?): View {
@@ -388,8 +443,7 @@ class ChatActivity : Activity(), Session.Listener {
         val tv = box.getChildAt(0) as TextView
         tv.text = when (r) {
             is Row.Day -> r.label
-            is Row.Item -> timeFmt.format(Date((r.m.ts * 1000).toLong())) + "  " +
-                (if (r.m.kind == "join") "👥 ${r.m.channel}: " else "") + r.m.text
+            is Row.Item -> (if (r.m.kind == "join") "👥 " else "") + r.m.text
         }
         tv.setTypeface(null, if (r is Row.Day) Typeface.BOLD else Typeface.NORMAL)
         return box
@@ -401,148 +455,36 @@ class ChatActivity : Activity(), Session.Listener {
         for (s in spans) sb.setSpan(s, start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
-    /** Line 1: sender, type icons, time and signal. Line 2: the text. */
+    /** Sender (Public and groups only), the text, then the time and ticks. */
     private fun render(m: Msg): CharSequence {
         val sb = SpannableStringBuilder()
         val meta = color(R.color.text_meta)
-        val who = when {
-            m.direction == "tx" -> "me"
-            m.sender != null -> m.sender
-            m.kind == "unverified" -> "unverified"
-            else -> null
+        val type = node?.channelType(current) ?: "public"
+        if (m.direction == "rx" && type in setOf("public", "group")) {
+            val who = m.sender ?: if (m.kind == "unverified") "unverified" else "?"
+            span(sb, who, StyleSpan(Typeface.BOLD), ForegroundColorSpan(senderColor(who)), RelativeSizeSpan(0.85f))
+            if (m.verified && !m.group) span(sb, " ✓", ForegroundColorSpan(color(R.color.text_sealed)), RelativeSizeSpan(0.85f))
+            sb.append("\n")
         }
-        val whoColor = when {
-            m.direction == "tx" -> color(R.color.accent)
-            m.kind == "unverified" -> color(R.color.text_warn)
-            who != null -> senderColor(who)
-            else -> meta
-        }
-        if (who != null) span(sb, who, StyleSpan(Typeface.BOLD), ForegroundColorSpan(whoColor))
-        if (m.verified && m.direction == "rx") span(sb, " ✓", ForegroundColorSpan(color(R.color.text_sealed)))
-        val icons = StringBuilder()
-        if (current == "all" && m.channel != "public" && m.channel != "other" && m.channel != "all") icons.append("  ${m.channel}")
-        when (m.kind) {
-            "sealed" -> icons.append(if (m.group) "  👥🔒" else "  🔒")
-            "signed" -> icons.append("  ✍")
-        }
-        if (icons.isNotEmpty()) span(sb, icons.toString(), ForegroundColorSpan(meta), RelativeSizeSpan(0.85f))
-        val tail = ArrayList<String>()
-        tail.add(timeFmt.format(Date((m.ts * 1000).toLong())))
-        if (m.direction == "rx" && m.rssi != null) tail.add("${m.rssi} dBm" + (m.snr?.let { "  SNR $it" } ?: ""))
-        span(sb, (if (sb.isEmpty()) "" else "   ") + tail.joinToString("  ·  "), ForegroundColorSpan(meta), RelativeSizeSpan(0.8f))
-        if (m.direction == "tx") {
-            val (label, c) = when (m.status) {
-                "sent" -> "  ·  ✓ sent" to meta
-                "failed" -> "  ·  ✗ not sent" to color(R.color.text_error)
-                else -> "  ·  sending…" to meta
-            }
-            span(sb, label, ForegroundColorSpan(c), RelativeSizeSpan(0.8f))
-        }
-        sb.append("\n")
-        val dim = m.kind in setOf("undecoded", "locked", "pending")
+        val dim = m.kind in setOf("undecoded", "locked", "pending", "unverified")
         span(sb, m.text, ForegroundColorSpan(if (dim) meta else color(R.color.text_plain)))
+        span(sb, "  " + timeFmt.format(Date((m.ts * 1000).toLong())), ForegroundColorSpan(meta), RelativeSizeSpan(0.75f))
+        if (m.direction == "tx") {
+            val direct = m.kind == "direct"
+            val (label, c) = when (m.status) {
+                "sent" -> " ✓" to meta
+                "delivered" -> " ✓✓" to color(R.color.accent)
+                "unconfirmed" -> " ✓\nnot delivered · tap to resend" to color(R.color.text_warn)
+                "failed" -> (if (direct) " ⚠\nnot sent · tap to resend" else " ⚠ not sent") to color(R.color.text_error)
+                else -> " 🕓" to meta
+            }
+            span(sb, label, ForegroundColorSpan(c), RelativeSizeSpan(0.75f))
+        }
         return sb
     }
 
-    // -- menu ---------------------------------------------------------------------------------
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menu.add(0, M_KEYS, 0, R.string.menu_keys)
-        menu.add(0, M_ADD, 1, R.string.menu_add_key)
-        menu.add(0, M_ID, 2, R.string.menu_identity)
-        menu.add(0, M_CONTACTS, 3, R.string.menu_contacts)
-        menu.add(0, M_RADIO, 4, R.string.radio_settings)
-        menu.add(0, M_LOCK, 5, R.string.menu_lock)
-        menu.add(0, M_PASSWD, 6, R.string.menu_passwd)
-        menu.add(0, M_EXPORT, 7, R.string.menu_export)
-        menu.add(0, M_LOGOUT, 8, R.string.menu_disconnect)
-        return true
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        val n = node ?: return false
-        menu.findItem(M_LOCK).setTitle(if (n.locked) R.string.menu_unlock else R.string.menu_lock).isVisible = n.protected
-        menu.findItem(M_PASSWD).isVisible = n.protected && !n.locked
-        for (id in listOf(M_KEYS, M_ADD, M_ID, M_CONTACTS, M_EXPORT)) menu.findItem(id).isEnabled = !n.locked
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        val n = node ?: return true
-        when (item.itemId) {
-            M_KEYS -> KeysUi(this, n) { refreshChannels() }.showKeys()
-            M_ADD -> KeysUi(this, n) { refreshChannels() }.addKey()
-            M_ID -> KeysUi(this, n) { }.showIdentity()
-            M_CONTACTS -> KeysUi(this, n) { }.showContacts()
-            M_RADIO -> startActivity(Intent(this, RadioSettingsActivity::class.java))
-            M_LOCK -> if (n.locked) unlock(n) else { n.lockIdentity(); refreshChannels(); invalidateOptionsMenu() }
-            M_PASSWD -> askNewPassphrase("Change passphrase", null) { p ->
-                bg({ n.keys.changePassphrase(p) }) { r -> r.onSuccess { toast("Passphrase changed") }.onFailure { toast(it.text()) } }
-            }
-            M_EXPORT -> exportIdentity(n)
-            M_LOGOUT -> confirm("Log out", "Stop listening and close the identity?", "Log out") {
-                session.disconnect()
-                startActivity(Intent(this, LoginActivity::class.java))
-                finish()
-            }
-        }
-        return true
-    }
-
-    private fun unlock(n: Node) {
-        val pw = field("Passphrase", password = true)
-        form("Unlock", null, listOf(pw), "Unlock") {
-            val p = pw.text.toString()
-            bg({ n.unlock(p) }) { r ->
-                r.onSuccess {
-                    session.messages.clear(); session.messages.addAll(n.history())
-                    refreshChannels(); invalidateOptionsMenu()
-                }.onFailure { e -> toast(if (e is WrongPassphrase) "Wrong passphrase" else e.text()) }
-            }
-            null
-        }
-    }
-
-    private var exportBlob: ByteArray? = null
-
-    private fun exportIdentity(n: Node) {
-        askNewPassphrase("Export identity",
-            "The file is protected with this passphrase. Move, don't clone: use the identity on one device at a time.") { p ->
-            bg({ n.keys.exportBlob(p) }) { r ->
-                r.onSuccess { blob ->
-                    exportBlob = blob
-                    val i = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                        .setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, "${n.nick ?: "identity"}.ltid")
-                    startActivityForResult(i, REQ_EXPORT)
-                }.onFailure { toast(it.text()) }
-            }
-        }
-    }
-
-    @Deprecated("Activity API")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_EXPORT && resultCode == RESULT_OK) {
-            val uri = data?.data ?: return
-            val blob = exportBlob ?: return
-            try {
-                contentResolver.openOutputStream(uri)!!.use { it.write(blob) }
-                toast("Identity exported")
-            } catch (e: Exception) { toast("Export failed: ${e.text()}") }
-            exportBlob = null
-        }
-    }
-
     companion object {
-        private const val M_KEYS = 1
-        private const val M_ADD = 2
-        private const val M_ID = 3
-        private const val M_CONTACTS = 4
-        private const val M_RADIO = 5
-        private const val M_LOCK = 6
-        private const val M_PASSWD = 7
-        private const val M_EXPORT = 8
-        private const val M_LOGOUT = 9
-        private const val REQ_EXPORT = 20
+        const val EXTRA_CHANNEL = "channel"
+        private const val M_INFO = 1
     }
 }

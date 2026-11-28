@@ -16,7 +16,7 @@ open class KeyException(msg: String) : IllegalArgumentException(msg)
 class LockedException(msg: String) : KeyException(msg)
 
 data class Opened(
-    val kind: String,            // signed | sealed | join
+    val kind: String,            // signed | sealed | join | direct
     val source: String,          // stream label or group label
     val sender: String,
     val text: String,
@@ -24,7 +24,20 @@ data class Opened(
     val pub: ByteArray? = null,
     val verified: Boolean = false,
     val group: Boolean = false,
+    val inner: String? = null,   // direct: text | resend | receipt
+    val acks: List<Long> = emptyList(),
 )
+
+/** Direct (one-to-one) messages: the plaintext inside the sealed frame starts with this byte. */
+object Dm {
+    const val TEXT = 1
+    const val RESEND = 2
+    const val RECEIPT = 3
+    const val MAX_ACKS = 4
+    val INNER = mapOf(TEXT to "text", RESEND to "resend", RECEIPT to "receipt")
+    /** Id of a direct message, as receipts confirm it: the low 32 bits of its counter. */
+    fun id(counter: Long): Long = counter and 0xFFFFFFFFL
+}
 
 object Ids {
     private val NICK = Regex("^[^\\s:#,=]{1,16}$")
@@ -61,7 +74,10 @@ class Keyring(val file: File, me: String? = null, passphrase: String? = null) {
     private var vault: Vault? = null
     private val cache = HashMap<String, Crypto.StreamKey>()
     private val seenCtrl = HashSet<String>()
+    private val pairs = HashMap<String, Pair<ByteArray, ByteArray>?>()   // contact key -> (send, receive)
     private var dirty = false
+    private var numberCached: String? = null
+    private var findableCached = true
     private var lastSave = 0.0
     val floor = Crypto.startupFloor()
 
@@ -113,6 +129,7 @@ class Keyring(val file: File, me: String? = null, passphrase: String? = null) {
         me = d["me"] as? String
         locked = false
         pub = Ed25519.publicKey(Bytes.unb32(d["id_seed"] as String))
+        findableCached = d["findable"] != false          // kept while locked
         if (dirtyNow) save()
     }
 
@@ -141,6 +158,7 @@ class Keyring(val file: File, me: String? = null, passphrase: String? = null) {
         data = empty(me)
         vault = null
         cache.clear()
+        pairs.clear()
         locked = true
     }
 
@@ -179,17 +197,79 @@ class Keyring(val file: File, me: String? = null, passphrase: String? = null) {
 
     fun fingerprint(): String = Ids.fingerprint(pub)
 
+    /** Your 10-digit TextCast number (computed from your key, cached). */
+    val number: String get() {
+        numberCached?.let { return it }
+        val stored = data["number"] as? String
+        val n = if (stored != null && data["number_pub"] == Bytes.b32(pub)) stored else Numbers.numberOf(pub).also {
+            if (!locked) { data["number"] = it; data["number_pub"] = Bytes.b32(pub); dirty = true }
+        }
+        numberCached = n
+        return n
+    }
+
+    /** Answer "who has my number?" lookups (default on). */
+    val findable: Boolean get() = findableCached
+
+    @Synchronized fun setFindable(on: Boolean) {
+        requireUnlocked()
+        data["findable"] = on; findableCached = on
+        save()
+    }
+
     private fun myKey(): String = handle?.lowercase() ?: throw KeyException("set a nick to post in groups")
 
     // -- contacts ----------------------------------------------------------------
 
-    fun addContact(lid: String, name: String? = null): String {
+    /** Save a contact from an identity string (pasted or scanned: the full key, so verified). */
+    fun addContact(lid: String, name: String? = null, verified: Boolean = true): String {
         requireUnlocked()
         val (h, p) = Ids.parseLid(lid)
         val n = (name?.ifBlank { null } ?: h.substringBefore('#')).trim()
-        section("contacts")[Bytes.b32(p)] = linkedMapOf<String, Any?>("name" to n, "handle" to h)
+        val k = Bytes.b32(p)
+        val old = section("contacts")[k]?.asMap()
+        section("contacts")[k] = linkedMapOf<String, Any?>("name" to n, "handle" to h,
+            "dm_out" to (old?.long("dm_out") ?: 0L), "dm_in" to (old?.long("dm_in") ?: 0L),
+            "verified" to (verified || old?.bool("verified") == true),
+            "number" to (old?.str("number") ?: Numbers.numberOf(p)))
+        pairs.remove(k)
         save()
         return n
+    }
+
+    /** Save a contact found by number. Throws if the key doesn't have that number, or
+     *  another saved contact already has it (somebody may be faking it). */
+    fun addFound(pubKey: ByteArray, nick: String, number: String, name: String? = null): String {
+        Ids.checkNick(nick)
+        if (Numbers.numberOf(pubKey) != number) throw KeyException("the answer does not match that number")
+        for ((k, v) in section("contacts")) {
+            val c = v.asMap()
+            if (k != Bytes.b32(pubKey) && contactNumber(k, c) == number)
+                throw KeyException("${c.str("name")} already has number ${Numbers.format(number)} with a different key - check in person")
+        }
+        return addContact("lid1:${Ids.makeHandle(nick, pubKey)}:${Bytes.b32(pubKey)}", name, verified = false)
+    }
+
+    private fun contactNumber(k: String, c: MutableMap<String, Any?>): String =
+        c.str("number") ?: Numbers.numberOf(Bytes.unb32(k)).also { c["number"] = it; dirty = true }
+
+    class ContactInfo(val name: String, val handle: String, val number: String, val verified: Boolean)
+
+    fun contactByNumber(number: String): ContactInfo? = contactInfo().firstOrNull { it.number == number }
+
+    fun contactInfo(): List<ContactInfo> {
+        val me = Bytes.b32(pub)
+        return section("contacts").filter { it.key != me }.map { (k, v) ->
+            val c = v.asMap()
+            ContactInfo(c.str("name") ?: "", c.str("handle") ?: "", contactNumber(k, c), c["verified"] != false)
+        }.sortedBy { it.name.lowercase() }
+    }
+
+    fun renameContact(handle: String, name: String) {
+        requireUnlocked()
+        if (name.isBlank()) throw KeyException("a name is needed")
+        contact(handle).second["name"] = name.trim()
+        save()
     }
 
     fun removeContact(name: String): Boolean {
@@ -197,7 +277,7 @@ class Keyring(val file: File, me: String? = null, passphrase: String? = null) {
         val c = section("contacts")
         for ((k, v) in c.entries.toList()) {
             val m = v.asMap()
-            if (m.str("name") == name || m.str("handle")?.equals(name, true) == true) { c.remove(k); save(); return true }
+            if (m.str("name") == name || m.str("handle")?.equals(name, true) == true) { c.remove(k); pairs.remove(k); save(); return true }
         }
         return false
     }
@@ -211,6 +291,91 @@ class Keyring(val file: File, me: String? = null, passphrase: String? = null) {
     fun display(handle: String, pub: ByteArray?): String {
         if (pub != null) section("contacts")[Bytes.b32(pub)]?.asMap()?.str("name")?.let { return it }
         return handle
+    }
+
+    // -- direct (one-to-one) messages (see keyring.py) -------------------------------
+    //   pair = HMAC(a_me * A_peer, "lora-text/pair/" + h1 + "|" + h2)[:16]   (handles lower, sorted)
+    //   each direction: memberSecret(pair, sender handle); ordinary SEALED frames
+
+    /** (handle, name) of the contacts you can message, sorted by name. */
+    fun directContacts(): List<Pair<String, String>> {
+        val me = Bytes.b32(pub)
+        return section("contacts").filterKeys { it != me }.values.map { v ->
+            val m = v.asMap(); (m.str("handle") ?: "") to (m.str("name") ?: "")
+        }.sortedBy { it.second.lowercase() }
+    }
+
+    private fun contact(handle: String): Pair<String, MutableMap<String, Any?>> {
+        for ((k, v) in section("contacts")) {
+            val m = v.asMap()
+            if (m.str("handle")?.equals(handle, ignoreCase = true) == true) return k to m
+        }
+        throw KeyException("'$handle' is not one of your contacts")
+    }
+
+    private fun dmKeys(key: String, c: Map<String, Any?>): Pair<ByteArray, ByteArray>? = pairs.getOrPut(key) {
+        val h = handle
+        if (h == null || key == Bytes.b32(pub)) return@getOrPut null
+        val s = Ed25519.sharedPoint(Bytes.unb32(data["id_seed"] as String), Bytes.unb32(key)) ?: return@getOrPut null
+        val me = h.lowercase(); val peer = (c.str("handle") ?: return@getOrPut null).lowercase()
+        val (h1, h2) = listOf(me, peer).sorted()
+        val pair = Crypto.derive(s, "pair/$h1|$h2").copyOf(16)
+        Crypto.memberSecret(pair, me) to Crypto.memberSecret(pair, peer)
+    }
+
+    private fun sealDm(handle: String, plaintext: ByteArray): Pair<ByteArray, Long> {
+        requireUnlocked()
+        val (key, c) = contact(handle)
+        val keys = dmKeys(key, c) ?: throw KeyException("cannot message ${c.str("name")}: their identity key is not usable")
+        val i = Crypto.nextCounter(c.long("dm_out"), floor)
+        val mode = Protocol.makeMode(MsgType.SEALED, version = Protocol.PRIVATE_VERSION)
+        val frame = Crypto.seal(key(keys.first), mode, i, plaintext, encrypt = true)
+        c["dm_out"] = i
+        save()
+        return frame to i
+    }
+
+    /** Frame for a direct message to a contact, and its counter (see Dm.id). */
+    @Synchronized fun sealDirect(handle: String, text: String, resend: Boolean = false): Pair<ByteArray, Long> {
+        val body = Bytes.utf8(Protocol.normalize(text.trim()))
+        val limit = Protocol.profile.maxPayload - Crypto.FRAME_OVERHEAD - 1
+        if (body.size > limit) throw PayloadTooLong("${body.size} B of text > $limit B limit for a direct message")
+        return sealDm(handle, Bytes.concat(byteArrayOf((if (resend) Dm.RESEND else Dm.TEXT).toByte()), body))
+    }
+
+    /** Receipt confirming up to Dm.MAX_ACKS direct messages from this contact. */
+    @Synchronized fun makeReceipt(handle: String, ids: List<Long>): ByteArray {
+        val parts = mutableListOf(byteArrayOf(Dm.RECEIPT.toByte()))
+        for (i in ids.take(Dm.MAX_ACKS)) parts.add(Bytes.intBE(Dm.id(i).toInt()))
+        return sealDm(handle, Bytes.concat(*parts.toTypedArray())).first
+    }
+
+    private fun openDirect(frame: ByteArray, t: Double?): Opened? {
+        for ((key, v) in section("contacts").entries.toList()) {
+            val c = v.asMap()
+            val keys = dmKeys(key, c) ?: continue
+            val k = key(keys.second)
+            for (i in Crypto.matchingCounters(k, frame, c.long("dm_in"), t)) {
+                val pt = Crypto.unseal(k, frame, i, true)
+                if (pt.isEmpty()) continue
+                val type = pt[0].toInt() and 0xFF
+                val inner = Dm.INNER[type] ?: continue
+                var text = ""
+                val acks = ArrayList<Long>()
+                if (type == Dm.RECEIPT) {
+                    val n = pt.size - 1
+                    if (n == 0 || n % 4 != 0 || n > 4 * Dm.MAX_ACKS) continue
+                    for (j in 0 until n / 4) acks.add(Bytes.readIntBE(pt, 1 + 4 * j))
+                } else {
+                    text = Bytes.utf8Strict(pt, 1) ?: continue
+                }
+                c["dm_in"] = i
+                touch()
+                return Opened("direct", "@" + c.str("handle"), c.str("name") ?: "", text, i, Bytes.unb32(key),
+                    verified = true, group = false, inner = inner, acks = acks)
+            }
+        }
+        return null
     }
 
     // -- management ----------------------------------------------------------------
@@ -460,7 +625,10 @@ class Keyring(val file: File, me: String? = null, passphrase: String? = null) {
         if (version != Protocol.PRIVATE_VERSION || (type != MsgType.SIGNED && type != MsgType.SEALED) ||
             frame.size < Crypto.FRAME_OVERHEAD) return null
         val encrypted = type == MsgType.SEALED
-        if (encrypted) openCtrl(frame, t)?.let { return it }
+        if (encrypted) {
+            openCtrl(frame, t)?.let { return it }
+            openDirect(frame, t)?.let { return it }
+        }
         for (rx in receiveStreams()) {
             val k = key(rx.secret)
             for (i in Crypto.matchingCounters(k, frame, rx.holder.long(rx.field), t)) {

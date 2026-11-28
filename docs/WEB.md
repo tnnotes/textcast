@@ -5,6 +5,8 @@ LoRa USB stick directly. Nothing to install.
 
 **Open: https://tnnotes.github.io/textcast/**
 
+<p align="center"><img src="../pictures/web_private_chat.png" width="760" alt="The web app with a private chat open"></p>
+
 ## What you need
 
 - A computer with **Windows, macOS, Linux or ChromeOS**.
@@ -16,49 +18,91 @@ LoRa USB stick directly. Nothing to install.
 
 ## First start
 
-1. Plug the stick into the computer.
-2. Open the link above.
-3. Type **your name** (1–16 characters, no spaces).
+1. Open the link above.
+2. Type **your name** (1–16 characters, no spaces).
    On a shared computer, tick **Protect with a passphrase**.
-4. Press **Start** and pick the stick from the list the browser shows.
-   The first time, TextCast sets the stick up (about 8 seconds).
-5. Type a message and press Enter. Everyone in range with the same radio
-   settings sees it.
+3. Press **Start**, plug the stick in and pick it from the list the browser
+   shows. The first time, TextCast sets the stick up (about 8 seconds).
+4. Open **Public**, type a message and press Enter. Everyone in range with the
+   same radio settings sees it.
 
-Next time you only press **Start**: the browser remembers you and your stick.
-If you unplug the stick, TextCast notices; plug it back in and it reconnects
-by itself.
+No stick yet? Press **Start without radio** (or close the browser's list). You
+can read and set up your chats; the bar at the top of the chat list says
+**No radio**. When you plug the stick in, press **Connect** in that bar and pick
+it (the browser needs this one click the first time). After that, the browser
+remembers the stick: whenever it is plugged in, even after unplugging or into
+another USB socket, TextCast connects by itself.
 
 ## Radio region
 
 TextCast picks the region from the computer's time zone (Vietnam and
 Indonesia: AS923-2, Europe: EU868, USA: US915, ...). **Everyone must use the
 same settings.** Check or change them under **more options** on the start
-screen, or with 📶 in the app (frequency, spreading factor, power, ...). The
-preview shows how many bytes fit in one message.
+screen, or in ⚙ → **Advanced → Radio settings** (frequency, spreading factor,
+power, ...). The preview shows how many bytes fit in one message.
 
 Region presets are starting points, not legal advice: check your local rules.
 
 ## Using it
 
-- **Channels** along the top: *All*, *Public* (everyone in range), your
-  groups 🔒, your streams 📢 and streams you follow 📻.
-- **"to"** under the messages chooses where your message goes. The counter
-  shows the bytes used (100 per message by default; Vietnamese letters with
-  marks use 2–3 bytes).
-- Each message shows the time, the signal strength (dBm and SNR) and, for
-  yours, *sent ✓* or *not sent ✗*.
-- 👥 **Groups, streams and contacts:**
-  - your identity string (`lid1:…`) to give to people, and your fingerprint
-    to compare in person;
-  - **New group**: type a name, then send the `ltg2:…` string to the members
-    (in person, by chat, by email);
-  - **Add pasted string**: join a group (`ltg2:`), follow a stream (`lts3:`) or
-    save a contact (`lid1:`).
-- 🔒 **Lock** (with a passphrase): hides private messages until you unlock;
-  private messages that arrive meanwhile open when you unlock.
-- ⋯ **More:** export your identity, notifications and sound, show your tag
-  in public (`Lan#K7QX`), clear history, log out.
+<p align="center"><img src="../pictures/web_phone.png" width="720" alt="Start screen, chat list and a chat on a phone-sized window"></p>
+
+It works like a phone messenger.
+
+- **Chat list** (left, or the whole window on a small screen): 📢 **Public**
+  first, then people and groups, newest first, with the last message and an
+  unread count. The bar on top shows the radio: *Radio on · 920.8 MHz · SF7*,
+  *No radio* or *Radio unplugged*.
+- **A chat** (right, or full screen with ← back): their messages on the left
+  with the sender's name (in Public and groups), yours on the right with
+  🕓 waiting → ✓ sent → **✓✓ delivered** (private chats). Tap a message for its
+  signal strength (dBm, SNR) and size. ⓘ shows the person's number or the
+  group's invite.
+- The byte counter appears when a message gets close to the limit (100 bytes
+  by default; Vietnamese letters with marks use 2–3 bytes).
+
+### Add a person by their number
+
+<p align="center"><img src="../pictures/web_add_by_number.png" width="720" alt="New chat: Found Tuan nearby"></p>
+
+1. Ask for their **TextCast number** (they find it in ⚙: e.g. `512 384 9076`).
+2. Press **＋** and type it, then **Find**. TextCast asks nearby devices who has
+   that number (they need TextCast open with the radio plugged in, in range).
+3. *Found Tuan nearby* → choose the name to save → **Add and chat**.
+4. They add you the same way. Now private messages get ✓✓ when they arrive.
+
+A wrong digit is caught before anything is sent. If two devices answer for one
+number, TextCast warns and adds no one: use their identity string instead.
+Contacts added by number say so in ⓘ; contacts added with their identity
+string (`lid1:…`, ＋ → *Paste*) count as verified.
+
+### Private messages
+
+- Only the two of you can read them. ✓✓ means their device confirmed it.
+- *not delivered · Resend* after 30 s: they may be out of range, switched off,
+  or haven't added you. **Resend** sends it again; they won't see it twice.
+
+### Groups and channels
+
+- **＋ → New group:** type a name, then send the invite string (`ltg2:…`) to the
+  members in person or by another app. They paste it in **＋ → Paste**.
+- ⓘ in a group shows the invite again, and **Leave group**.
+- ⚙ → Advanced: broadcast channels you post to (`lts3:`), and the list of
+  groups and channels.
+
+### ⚙ Settings
+
+<p align="center"><img src="../pictures/web_settings.png" width="720" alt="Settings: number, privacy, notifications, identity"></p>
+
+- **Your TextCast number** (copy it) and your identity string.
+- **Let people find me by my number** (on by default).
+- **Lock** (with a passphrase): hides private chats until you unlock; private
+  messages that arrive meanwhile open when you unlock.
+- **Notifications** and **sound** for messages while TextCast is in the
+  background. Private messages show who wrote, not what.
+- **Back up my identity**, **Log out**.
+- **Advanced:** radio settings, the radio log (every packet heard, with signal
+  strength), "show my name with its tag in public", channels, clear history.
 
 ## Works offline, installs like an app
 
@@ -80,11 +124,11 @@ offline. It can't be installed as an app, and it keeps its own identity
 
 Your identity and messages are stored **in this browser only**.
 
-- Press **Back up now** (or ⋯ → Export identity) and keep the `.ltid` file
+- Press **Back up** (or ⚙ → Back up my identity) and keep the `.ltid` file
   somewhere safe. It is encrypted with the passphrase you choose for it.
-- The same file opens in the Android app and the desktop app, and in another
-  browser (*more options* → Import a .ltid file). **Move, don't clone:** stop
-  using the identity on the old device.
+- The same file opens in the Android app and the terminal app, and in another
+  browser (*more options* → Import a .ltid file). Your TextCast number moves
+  with it. **Move, don't clone:** stop using the identity on the old device.
 - Clearing *browsing history* or *cached images and files* doesn't touch
   TextCast. Clearing **cookies and site data** deletes the identity and the
   messages.
@@ -94,10 +138,12 @@ Your identity and messages are stored **in this browser only**.
 
 | Problem | Try |
 |---|---|
-| "This browser can't talk to a USB radio" | Use Chrome, Edge or Firefox 151+ on a computer |
+| "This browser can't use a USB radio" | Use Chrome, Edge or Firefox 151+ on a computer |
 | The stick isn't in the list | Unplug and replug it. On Windows, install the driver for the stick's USB chip |
 | "Could not open the radio" | Another program or browser tab is using the stick: close it |
-| Nobody hears me | Same region and settings on every device (📶); check *sent ✓* |
-| Messages don't arrive | Antennas attached, same settings; try a few metres apart first |
+| "No radio" and nothing happens when plugged in | Press **Connect** in the bar and pick the stick |
+| Nobody hears me | Same region and settings on every device (⚙ → Advanced → Radio settings) |
+| "Nobody answered" when adding by number | Check the number; they need TextCast open, the radio plugged in, within range, and "find me by number" on |
+| Private messages stay *not delivered* | They must add you too; clocks must agree within ±5 minutes |
 | "Too long for one radio message" | Shorten it; Vietnamese marks use 2–3 bytes per letter |
 | Lost the identity after clearing browser data | Import your `.ltid` backup |

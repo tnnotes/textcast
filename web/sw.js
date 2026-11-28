@@ -1,6 +1,6 @@
 // TextCast offline support. The build stamps VERSION with a hash of the page, so
 // a new page means a new worker: it saves the new files, and the next launch uses them.
-const VERSION = "0.6.0-a5930aea78";
+const VERSION = "0.7.0-856877fc41";
 const CACHE = "textcast-" + VERSION;
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png",
                "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/apple-touch-icon.png"];

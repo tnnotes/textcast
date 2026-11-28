@@ -36,6 +36,7 @@ from . import crypto as C
 from . import ed25519
 from .protocol import (PRIVATE_VERSION, PROFILE, MsgType, PayloadTooLong, make_mode, normalize,
                        parse_mode)
+from .numbers import format_number, number_of
 from .vault import LogCipher, Vault, WrongPassphrase  # noqa: F401  (re-exported)
 
 
@@ -94,6 +95,19 @@ class Opened:
     pub: Optional[bytes] = None      # sender's public key, if known
     verified: bool = False           # owner proved by signature (followed lts3 stream)
     group: bool = False              # message from a group (any member could send it)
+    inner: Optional[str] = None      # direct messages: 'text' | 'resend' | 'receipt'
+    acks: tuple = ()                 # receipt: ids of the confirmed messages
+
+
+# Direct (one-to-one) messages. Inside the sealed frame the plaintext starts with:
+DM_TEXT, DM_RESEND, DM_RECEIPT = 1, 2, 3
+DM_INNER = {DM_TEXT: "text", DM_RESEND: "resend", DM_RECEIPT: "receipt"}
+DM_MAX_ACKS = 4
+
+
+def dm_id(counter: int) -> int:
+    """Id of a direct message, as confirmed by receipts: low 32 bits of its counter."""
+    return counter & 0xFFFFFFFF
 
 
 SAVE_EVERY = 30.0                    # s between saves of receive counters
@@ -116,6 +130,7 @@ class Keyring:
         self._lockf = None
         self._cache: dict[bytes, C.StreamKey] = {}
         self._seen_ctrl: set[bytes] = set()
+        self._pair: dict[str, Optional[tuple[bytes, bytes]]] = {}   # contact key -> (send, receive) secrets
         self._dirty, self._last_save = False, 0.0
         if lock:
             self._acquire_lock()
@@ -151,6 +166,8 @@ class Keyring:
                 raise KeyError_(f"{self.path} belongs to callsign '{stored}', not '{self.me}'")
             data["me"] = stored or self.me
             data["log_secret"] = loaded.get("log_secret")
+            for k, v in loaded.items():                  # keys written by newer apps
+                data.setdefault(k, v)
         else:
             if self.encrypted:
                 if not passphrase:
@@ -170,6 +187,7 @@ class Keyring:
         check_nick(data["me"])
         self.data, self.me, self.locked = data, data["me"], False
         self.pub = ed25519.public_key(unb32(data["id_seed"]))
+        self._findable = data.get("findable", True) is not False    # kept while locked
         if dirty:
             self.save()
 
@@ -235,6 +253,7 @@ class Keyring:
         self.vault = None
         self._cache.clear()
         self.locked = True
+        self._pair.clear()
 
     def unlock(self, passphrase: str) -> None:
         self._load(passphrase)
@@ -275,6 +294,30 @@ class Keyring:
     def fingerprint(self) -> str:
         return fingerprint(self.pub)
 
+    @property
+    def number(self) -> str:
+        """Your 10-digit TextCast number (computed from your key, cached)."""
+        n = getattr(self, "_number", None)
+        if n is None:
+            n = self.data.get("number")
+            if not n or self.data.get("number_pub") != b32(self.pub):
+                n = number_of(self.pub)
+                if not self.locked:
+                    self.data["number"], self.data["number_pub"] = n, b32(self.pub)
+                    self._dirty = True
+            self._number = n
+        return n
+
+    @property
+    def findable(self) -> bool:
+        """Answer 'who has my number?' lookups (default on)."""
+        return self._findable
+
+    def set_findable(self, on: bool) -> None:
+        self._require_unlocked()
+        self.data["findable"] = self._findable = bool(on)
+        self.save()
+
     def set_me(self, me: Optional[str]) -> None:
         check_nick(me)
         self.me = self.data["me"] = me
@@ -287,25 +330,75 @@ class Keyring:
 
     # -- contacts (your own names for keys you have verified) ------------------
 
-    def add_contact(self, lid: str, name: Optional[str] = None) -> str:
+    def add_contact(self, lid: str, name: Optional[str] = None, verified: bool = True) -> str:
+        """Save a contact from an identity string (pasted or scanned: the full key,
+        so it counts as verified)."""
         self._require_unlocked()
         handle, pub = parse_lid(lid)
         name = (name or handle.partition("#")[0]).strip()
-        self.data["contacts"][b32(pub)] = {"name": name, "handle": handle}
+        old = self.data["contacts"].get(b32(pub), {})
+        self.data["contacts"][b32(pub)] = {
+            "name": name, "handle": handle, "dm_out": old.get("dm_out", 0),
+            "dm_in": old.get("dm_in", 0),
+            "verified": bool(verified or old.get("verified", False)),
+            "number": old.get("number") or number_of(pub)}
+        self._pair.pop(b32(pub), None)
         self.save()
         return name
+
+    def add_found(self, pub: bytes, nick: str, number: str, name: Optional[str] = None) -> str:
+        """Save a contact found by number. Raises KeyError_ if the key does not
+        have that number, or another saved contact already has it (possible fake)."""
+        check_nick(nick)
+        if number_of(pub) != number:
+            raise KeyError_("the answer does not match that number")
+        for k, c in self.data["contacts"].items():
+            if k != b32(pub) and self._contact_number(k, c) == number:
+                raise KeyError_(f"{c['name']} already has number {format_number(number)} "
+                                "with a different key - check in person")
+        return self.add_contact(f"lid1:{make_handle(nick, pub)}:{b32(pub)}", name, verified=False)
+
+    def _contact_number(self, key: str, c: dict) -> str:
+        if not c.get("number"):
+            c["number"] = number_of(unb32(key))
+            self._dirty = True
+        return c["number"]
+
+    def contact_by_number(self, number: str) -> Optional[dict]:
+        for k, c in self.data["contacts"].items():
+            if self._contact_number(k, c) == number:
+                return c
+        return None
+
+    def contact_info(self) -> list[dict]:
+        """Contacts for the UI: name, handle, number, verified (by key string / QR)."""
+        me = b32(self.pub)
+        out = [{"name": c["name"], "handle": c["handle"], "number": self._contact_number(k, c),
+                "verified": c.get("verified", True)}
+               for k, c in self.data["contacts"].items() if k != me]
+        return sorted(out, key=lambda x: x["name"].lower())
+
+    def rename_contact(self, handle: str, name: str) -> None:
+        self._require_unlocked()
+        name = name.strip()
+        if not name:
+            raise KeyError_("a name is needed")
+        self._contact(handle)[1]["name"] = name
+        self.save()
 
     def remove_contact(self, name: str) -> bool:
         self._require_unlocked()
         for k, c in list(self.data["contacts"].items()):
             if c["name"] == name or c["handle"].lower() == name.lower():
                 del self.data["contacts"][k]
+                self._pair.pop(k, None)
                 self.save()
                 return True
         return False
 
     def contacts(self) -> list[str]:
-        return [f"{c['name']:<16} {c['handle']:<22} {fingerprint(unb32(k))}"
+        return [f"{c['name']:<16} {format_number(self._contact_number(k, c)):<13} "
+                f"{'✓ verified' if c.get('verified', True) else 'added by number'}"
                 for k, c in self.data["contacts"].items()] or ["(no contacts)"]
 
     def display(self, handle: str, pub: Optional[bytes]) -> str:
@@ -315,6 +408,94 @@ class Keyring:
             if c:
                 return c["name"]
         return handle
+
+    # -- direct (one-to-one) messages -------------------------------------------
+    #
+    # Two people who hold each other's identity string compute the same pair
+    # secret, never sent: S = a_me * A_peer on the Ed25519 curve,
+    #   pair = HMAC-SHA256(S, "lora-text/pair/" + handle1 + "|" + handle2)[:16]
+    # (handles lower-case, sorted). Like a two-member group, each direction has
+    # its own key: member_secret(pair, sender handle). Frames are ordinary
+    # SEALED frames; the plaintext starts with DM_TEXT / DM_RESEND / DM_RECEIPT.
+
+    def direct_contacts(self) -> list[tuple[str, str]]:
+        """(handle, name) of the contacts you can message, sorted by name."""
+        me = b32(self.pub)
+        out = [(c["handle"], c["name"]) for k, c in self.data["contacts"].items() if k != me]
+        return sorted(out, key=lambda x: x[1].lower())
+
+    def _contact(self, handle: str) -> tuple[str, dict]:
+        for k, c in self.data["contacts"].items():
+            if c["handle"].lower() == handle.lower():
+                return k, c
+        raise KeyError_(f"'{handle}' is not one of your contacts")
+
+    def _dm_keys(self, key: str, c: dict) -> Optional[tuple[bytes, bytes]]:
+        if key not in self._pair:
+            secrets = None
+            if self.me and key != b32(self.pub):
+                s = ed25519.shared_point(unb32(self.data["id_seed"]), unb32(key))
+                if s is not None:
+                    me, peer = self.handle.lower(), c["handle"].lower()
+                    h1, h2 = sorted((me, peer))
+                    pair = C.derive(s, f"pair/{h1}|{h2}")[:16]
+                    secrets = (C.member_secret(pair, me), C.member_secret(pair, peer))
+            self._pair[key] = secrets
+        return self._pair[key]
+
+    def _seal_dm(self, handle: str, plaintext: bytes) -> tuple[bytes, int]:
+        self._require_unlocked()
+        key, c = self._contact(handle)
+        keys = self._dm_keys(key, c)
+        if keys is None:
+            raise KeyError_(f"cannot message {c['name']}: their identity key is not usable")
+        i = C.next_counter(c.get("dm_out", 0), self.floor)
+        mode = make_mode(MsgType.SEALED, version=PRIVATE_VERSION)
+        frame = C.seal(self._key(keys[0]), mode, i, plaintext, encrypt=True)
+        c["dm_out"] = i
+        self.save()
+        return frame, i
+
+    def seal_direct(self, handle: str, text: str, resend: bool = False) -> tuple[bytes, int]:
+        """Frame for a direct message to a contact, and its counter (see dm_id)."""
+        body = normalize(text.strip()).encode("utf-8")
+        limit = PROFILE.max_payload - C.FRAME_OVERHEAD - 1
+        if len(body) > limit:
+            raise PayloadTooLong(f"{len(body)} B of text > {limit} B limit for a direct message")
+        return self._seal_dm(handle, bytes([DM_RESEND if resend else DM_TEXT]) + body)
+
+    def make_receipt(self, handle: str, ids: list[int]) -> bytes:
+        """Receipt confirming up to DM_MAX_ACKS direct messages from this contact."""
+        ids = list(ids)[:DM_MAX_ACKS]
+        body = bytes([DM_RECEIPT]) + b"".join(dm_id(i).to_bytes(4, "big") for i in ids)
+        return self._seal_dm(handle, body)[0]
+
+    def _open_direct(self, frame: bytes, t: Optional[float]) -> Optional[Opened]:
+        for key, c in list(self.data["contacts"].items()):
+            keys = self._dm_keys(key, c)
+            if keys is None:
+                continue
+            k = self._key(keys[1])
+            for i in C.matching_counters(k, frame, c.get("dm_in", 0), t):
+                pt = C.unseal(k, frame, i, True)
+                if not pt or pt[0] not in DM_INNER:
+                    continue
+                inner, text, acks = DM_INNER[pt[0]], "", ()
+                if pt[0] == DM_RECEIPT:
+                    n = len(pt) - 1
+                    if n == 0 or n % 4 or n > 4 * DM_MAX_ACKS:
+                        continue
+                    acks = tuple(int.from_bytes(pt[1 + 4 * j:5 + 4 * j], "big") for j in range(n // 4))
+                else:
+                    try:
+                        text = pt[1:].decode("utf-8")
+                    except UnicodeDecodeError:
+                        continue
+                c["dm_in"] = i
+                self.touch()
+                return Opened("direct", "@" + c["handle"], c["name"], text, i, unb32(key),
+                              True, False, inner, acks)
+        return None
 
     # -- management ----------------------------------------------------------
 
@@ -566,6 +747,9 @@ class Keyring:
             ctrl = self._open_ctrl(frame)
             if ctrl:
                 return ctrl
+            direct = self._open_direct(frame, t)
+            if direct:
+                return direct
         for source, sender, pub, secret, holder, field, group, verified in self._receive_streams():
             k = self._key(secret)
             for i in C.matching_counters(k, frame, holder[field], t):

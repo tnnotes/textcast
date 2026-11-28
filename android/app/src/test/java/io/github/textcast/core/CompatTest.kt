@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -215,6 +216,67 @@ class CompatTest {
         )
         File(od, "kotlin.json").writeText(Json.stringify(res, 1))
         File(od, "keys-Lan.json").writeText(kr["lan_json"] as String)
+    }
+
+    @Test fun numbers() {
+        val n = v["numbers"] as Map<String, Any?>
+        for (k in n["keys"] as List<Map<String, String>>) {
+            assertEquals(k["number"], Numbers.numberOf(Bytes.unhex(k["pub"]!!)))
+            assertEquals(k["shown"], Numbers.format(k["number"]!!))
+            assertEquals(k["number"], Numbers.parse(k["shown"]))
+        }
+        val lk = n["lookup"] as Map<String, String>
+        assertEquals(lk["frame"], Bytes.hex(Numbers.makeLookup(lk["number"]!!)))
+        assertEquals(Numbers.Frame.Lookup(lk["number"]!!), Numbers.parseFrame(Bytes.unhex(lk["frame"]!!)))
+        for (a in n["answers"] as List<Map<String, Any?>>) {
+            val got = Numbers.makeAnswer(Bytes.unhex(a["pub"] as String), a["nick"] as String,
+                (a["id"] as Number).toInt(), (a["max"] as Number).toInt()).map { Bytes.hex(it) }
+            assertEquals(a["frames"], got)
+        }
+        for (g in n["good"] as List<String>) Numbers.parse(g)
+        for (b in n["bad"] as List<String>) {
+            try { Numbers.parse(b); fail("accepted $b") } catch (e: NumberException) { }
+        }
+    }
+
+    @Test fun directMessages() {
+        Protocol.setHardwareLimits(Hardware.load(null).maxPayload, 1)
+        Protocol.applyProfile(Settings.buildProfile(mapOf("region" to "AS923-2")))
+        val d = v["direct"] as Map<String, Any?>
+        val dir = tmpDir()
+        File(dir, "keys-Tuan.json").writeText(d["tuan_json"] as String)
+        File(dir, "keys-Lan.json").writeText(d["lan_json"] as String)
+        val tuan = Keyring(File(dir, "keys-Tuan.json"), "Tuan")
+        val lan = Keyring(File(dir, "keys-Lan.json"), "Lan")
+        val seed = Bytes.unb32(Json.parseObject(d["tuan_json"] as String)["id_seed"] as String)
+        assertEquals(d["shared"], Bytes.hex(Ed25519.sharedPoint(seed, lan.pub)!!))
+        for (bad in d["bad_keys"] as List<String>) assertNull(Ed25519.sharedPoint(seed, Bytes.unhex(bad)))
+        val frames = d["frames"] as Map<String, String>
+        val exp = d["expected"] as Map<String, Map<String, Any?>>
+        val t = (d["t"] as Number).toDouble()
+        for (k in listOf("text", "resend", "receipt")) {
+            val o = tuan.open(Bytes.unhex(frames[k]!!), t)
+            assertNotNull(k, o)
+            val e = exp[k]!!
+            assertEquals(k, e["kind"], o!!.kind); assertEquals(e["source"], o.source); assertEquals(e["sender"], o.sender)
+            assertEquals(e["text"], o.text); assertEquals(e["inner"], o.inner)
+            assertEquals((e["acks"] as List<Number>).map { it.toLong() }, o.acks)
+            assertEquals((e["counter"] as Number).toLong(), o.counter)
+        }
+        assertNull("replay refused", tuan.open(Bytes.unhex(frames["text"]!!), t))
+        val (frame, _) = tuan.sealDirect(lan.handle!!, "trả lời từ Android")
+        assertEquals("trả lời từ Android", lan.open(frame)!!.text)
+
+        val out = System.getProperty("textcast.compat.out") ?: return
+        val f = File(out, "kotlin.json")
+        if (!f.exists()) return
+        val res = Json.parseObject(f.readText())
+        File(dir, "keys-Tuan.json").writeText(d["tuan_json"] as String)
+        val t3 = Keyring(File(dir, "keys-Tuan.json"), "Tuan")
+        res["direct_text"] = Bytes.hex(t3.sealDirect(lan.handle!!, "từ Android").first)
+        res["direct_receipt"] = Bytes.hex(t3.makeReceipt(lan.handle!!, listOf(77L, 4294967296L + 5)))
+        f.writeText(Json.stringify(res, 1))
+        File(out, "keys-Lan-direct.json").writeText(d["lan_json"] as String)
     }
 
     @Test fun vaultAndLog() {

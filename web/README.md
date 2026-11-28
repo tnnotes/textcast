@@ -3,6 +3,8 @@
 One web page that talks to the LoRa USB stick directly. Nothing to install:
 no Python, no app, no internet.
 
+<p align="center"><img src="../pictures/web_private_chat.png" width="760" alt="The web app: chat list and a private chat"></p>
+
 ```
 index.html          THE app: a single self-contained file (open it, plug in, talk)
 sw.js, manifest.webmanifest, icons/   offline copy and "Install" when served over https
@@ -22,6 +24,21 @@ tests/              compatibility tests and a browser test with a simulated LA66
 3. Type your name and press **Start**. The first time, pick the stick from the
    list the browser shows; after that the browser remembers it.
 4. Talk. The first connection sets the stick up for TextCast (about 8 seconds).
+
+No stick yet? Press Start anyway (or close the list): you can read and set up
+your chats, and the bar at the top says "No radio". Plug the stick in later: a
+stick you picked before connects by itself; the first time, press **Connect**
+in that bar and pick it (the browser needs that one click).
+
+It looks like a phone messenger: your chats on the left (Public first, then
+people and groups with their last message and unread count), the open chat on
+the right (on a phone-sized window, one at a time with ← back). Press **＋** to
+add a person by their **TextCast number** (⚙ shows yours) or start a group.
+⚙ → **Advanced** has the radio settings, the radio log (every packet with its
+signal strength) and groups & channels.
+
+<p align="center"><img src="../pictures/web_phone.png" width="720" alt="Start screen, chat list and a chat on a phone-sized window"></p>
+<p align="center"><img src="../pictures/web_add_by_number.png" width="720" alt="Adding a person by their TextCast number"></p>
 
 The region comes from the computer's time zone (Vietnam and Indonesia:
 AS923-2, Europe: EU868, ...); check or change it under **more options**,
@@ -63,8 +80,12 @@ Everything the desktop and Android apps do, with the same protocol, so all
 three chat together:
 
 - Public messages to everyone in range; groups (encrypted) and streams (signed).
-- Join a group, follow a stream or save a contact by pasting a `ltg2:` /
-  `lts3:` / `lid1:` string; create groups and streams and share their strings.
+- **Private messages to one person** with delivery receipts: press ＋ and type
+  their TextCast number (or paste their `lid1:` string). Your message shows
+  ✓ → **✓✓** when their device confirms it, or *not delivered · Resend* after 30 s.
+- Join a group, follow a channel or save a contact by pasting a `ltg2:` /
+  `lts3:` / `lid1:` string (＋ → Paste); create groups (＋) and channels
+  (⚙ → Advanced) and share their strings (ⓘ in the chat).
 - Radio settings: region presets or manual, with a live "max bytes / airtime"
   preview; duty-cycle and dwell limits are enforced.
 - Passphrase protection, lock / unlock (private messages heard while locked
@@ -72,9 +93,10 @@ three chat together:
 - **Export identity** to a `.ltid` file and import it here, in the desktop app
   (`identity.py`) or in the Android app. Move, don't clone.
 - Notices when the stick is unplugged, and reconnects by itself when it is
-  plugged back in (🔌 does it by hand).
+  plugged back in, even into another USB socket (the bar at the top of the chat
+  list shows the radio).
 - In the background: unread count in the tab title, a short beep, and (if you
-  allow it in ⋯) notifications. Private messages only say who wrote, not what.
+  allow it in ⚙) notifications. Private messages only say who wrote, not what.
 
 ## Where data is kept
 
@@ -96,10 +118,10 @@ offline copy).
 
 ```bash
 python3 web/build.py                       # after editing web/src/
-node --test web/tests/compat.test.js       # byte-for-byte with Python (same vectors as Android)
+node --test web/tests/*.test.js                     # byte-for-byte with Python (same vectors as Android), numbers, private messages
 TEXTCAST_COMPAT_OUT=web/compat/out node --test web/tests/compat.test.js
 python3 android/compat/check_kotlin.py web/compat/out   # Python opens files made by the web core
-python3 web/tests/e2e_browser.py --shots /tmp/shots     # headless Chrome + simulated LA66 + Python peer
+python3 web/tests/e2e_browser.py --shots /tmp/shots     # headless Chrome + simulated LA66 + Python peer (also makes the screenshots)
 ```
 
 The core is a port of `lora_text/` (via the Kotlin port). The crypto is plain

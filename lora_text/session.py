@@ -1,5 +1,5 @@
 """
-Start-up helpers shared by tui.py, chat.py and identity.py: file names for an
+Start-up helpers shared by chat.py and identity.py: file names for an
 identity, the passphrase prompt, and migration of old plain-text keyrings.
 """
 

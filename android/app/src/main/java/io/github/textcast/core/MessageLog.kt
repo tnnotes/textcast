@@ -66,10 +66,13 @@ class MessageLog(private val file: File) {
 
     @Synchronized private fun find(id: Long): Row? = rows.lastOrNull { it.id == id }
 
-    @Synchronized fun setTxOk(id: Long, ok: Boolean) {
+    @Synchronized fun setTxOk(id: Long, ok: Boolean) = setStatus(id, if (ok) 1 else 0)
+
+    /** tx_ok: 0 not sent, 1 sent, 2 delivered, 3 not confirmed (direct messages). */
+    @Synchronized fun setStatus(id: Long, code: Int) {
         val r = find(id) ?: return
-        r.txOk = if (ok) 1 else 0
-        append(linkedMapOf("u" to id, "tx_ok" to r.txOk!!.toLong()))
+        r.txOk = code
+        append(linkedMapOf("u" to id, "tx_ok" to code.toLong()))
     }
 
     @Synchronized fun update(id: Long, kind: String?, text: String?, channel: String?, sender: String?) {

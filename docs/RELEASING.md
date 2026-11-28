@@ -24,7 +24,7 @@ publishes it every time a push changes `web/`.
 4. Watch **Actions**: when the run is green, the app is live.
 
 **Each update:** edit `web/src/`, run `python3 web/build.py`, check it
-(`node --test web/tests/compat.test.js`, then try it in a browser), commit
+(`node --test web/tests/*.test.js`, then try it in a browser), commit
 and push. Browsers that opened TextCast before pick up the new version by
 themselves (the next time it opens after an online visit). Set `VERSION` in
 `web/build.py` for a release.
@@ -123,7 +123,7 @@ python3 -m unittest discover -s tests              # desktop core: ends with OK
 python3 android/compat/make_vectors.py             # only if the protocol changed
 cd android && ./gradlew testDebugUnitTest && cd .. # Kotlin core: byte-exact vs Python
 python3 android/compat/check_kotlin.py             # Python opens what Kotlin made
-node --test web/tests/compat.test.js               # web core: byte-exact vs Python
+node --test web/tests/*.test.js                             # web core: byte-exact vs Python, numbers, private messages
 python3 web/tests/e2e_browser.py                   # web app in headless Chrome (needs Playwright)
 ```
 

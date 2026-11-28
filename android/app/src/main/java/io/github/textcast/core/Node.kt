@@ -6,24 +6,29 @@ import java.io.File
  * UI-independent node controller (port of node.py): radio + keyring + log,
  * exposed as channels and messages.
  *
- * Channels: all, public, <group>, <own stream>, <followed stream>, other.
+ * Channels: all, public, @<handle> (direct, with delivery receipts), <group>,
+ * <own stream>, <followed stream>, other.
  */
 class Msg(
     val ts: Double,
     val direction: String,          // rx | tx | sys
-    var kind: String,               // plain | signed | sealed | join | unverified | undecoded | locked | pending
+    var kind: String,               // plain | signed | sealed | join | direct | unverified | undecoded | locked | pending | receipt
     val channel: String,
     val sender: String?,
     val text: String,
     val rssi: Int? = null,
     val snr: Int? = null,
     val size: Int = 0,
-    val job: Int? = null,
-    @Volatile var status: String? = null,     // tx: queued | sent | failed
+    var job: Int? = null,
+    @Volatile var status: String? = null,     // tx: queued | sent | failed; direct also delivered | unconfirmed
     val airtime: Double? = null,
     val verified: Boolean = false,
     val group: Boolean = false,
     var row: Long? = null,
+    val peer: String? = null,       // direct: the contact's handle
+    var dmId: Long? = null,         // direct: the id a receipt refers to
+    val acks: List<Long> = emptyList(),
+    val resent: Boolean = false,
 )
 
 class Node(
@@ -37,8 +42,22 @@ class Node(
 ) {
     companion object {
         val READ_ONLY = setOf("follow", "other")
-        val SENSITIVE = setOf("sealed", "signed", "join")
+        val SENSITIVE = setOf("sealed", "signed", "join", "direct")
+        @Volatile var RECEIPT_WAIT = 30.0          // s after sending: no receipt -> unconfirmed
+        @Volatile var RECEIPT_DELAY = 1.0 to 4.0   // s before confirming a direct message (random)
+        const val RESEND_SAME = 1800.0             // s: a resent text already shown is not shown again
+        val STATUS_CODE = mapOf("failed" to 0, "sent" to 1, "delivered" to 2, "unconfirmed" to 3)
+        val STATUS_NAME = STATUS_CODE.entries.associate { it.value to it.key }
+        @Volatile var LOOKUP_WAIT = 10.0          // s to wait for answers to "who has this number?"
+        @Volatile var LOOKUP_RETRY = 4.0          // s: ask once more if nobody answered yet
+        @Volatile var ANSWER_DELAY = 0.3 to 1.5   // s before answering a lookup for my number
+        @Volatile var ANSWER_GAP = 3.0            // s: answer at most this often
+        val QUIET = setOf("receipt", "lookup")
     }
+
+    /** Progress of a number lookup: status found | conflict | notfound | known | searching. */
+    class LookupResult(val number: String, val status: String, val nick: String? = null,
+                       val handle: String? = null, val name: String? = null)
 
     private val lock = Any()
     val keys = Keyring(keysFile, nick, passphrase)
@@ -48,10 +67,20 @@ class Node(
     val log = MessageLog(logFile)
     private var inserts = 0
     private val pending = java.util.concurrent.ConcurrentHashMap<Int, Msg>()
+    private var meter: AirtimeMeter? = null
+    private var limiter: RateLimiter? = null
+    private val awaiting = java.util.concurrent.ConcurrentHashMap<String, Msg>()   // "peer|id" -> sent direct
+    private val ackQueue = HashMap<String, Pair<String, MutableList<Long>>>()      // peer lower -> (handle, ids)
+    private val seenDm = HashMap<String, Double>()                                 // "peer|text" -> when shown
+    private val timer = java.util.Timer("textcast-receipts", true)
 
     var onMsg: (Msg) -> Unit = {}
     var onUpdate: (Msg) -> Unit = {}
     var onLog: (String) -> Unit = {}
+    var onLookup: (LookupResult) -> Unit = {}
+    private val lookups = HashMap<String, LinkedHashMap<String, String>>()     // number -> (pub hex -> nick)
+    private val parts = HashMap<Int, Triple<Double, Int, HashMap<Int, ByteArray>>>()
+    @Volatile private var lastAnswer = 0.0
 
     var radio: Radio? = null; private set
     var firmware = "?"; private set
@@ -72,6 +101,11 @@ class Node(
 
     /** Attach and start a radio; checks/applies the profile. Blocks a few seconds. Returns problems. */
     fun start(r: Radio, configure: Boolean = false, autoApply: Boolean = true): List<String> {
+        // the airtime count and rate limit survive unplugging: a replug must not reset the duty cycle
+        val keptMeter = meter
+        val keptLimiter = limiter
+        if (keptMeter != null && keptLimiter != null) { r.meter = keptMeter; r.limiter = keptLimiter }
+        else { meter = r.meter; limiter = r.limiter }
         radio = r
         r.onPacket = { onPacket(it) }
         r.onTx = { onTx(it) }
@@ -102,10 +136,23 @@ class Node(
     fun detachRadio() {
         val r = radio ?: return
         radio = null
+        // frames still waiting fail now: sealed frames carry a time-based counter and would be
+        // refused if sent much later; the user resends once the radio is back
+        for ((job, m) in pending.entries.toList()) {
+            pending.remove(job)
+            if (m.status == "queued") { m.status = "failed"; m.row?.let { log.setTxOk(it, false) }; onUpdate(m) }
+        }
         r.close()
     }
 
+    private fun later(seconds: Double, fn: () -> Unit) {
+        timer.schedule(object : java.util.TimerTask() {
+            override fun run() { try { fn() } catch (e: Exception) { onLog("timer: ${e.message}") } }
+        }, (seconds * 1000).toLong().coerceAtLeast(1))
+    }
+
     fun stop() {
+        timer.cancel()
         radio?.close()
         radio = null
         keys.close()
@@ -119,17 +166,26 @@ class Node(
 
     fun channels(): List<Pair<String, String>> = synchronized(lock) {
         if (keys.locked) return listOf("all" to "all", "public" to "public", "other" to "other")
-        listOf("all" to "all", "public" to "public") + keys.groups().map { it to "group" } +
+        listOf("all" to "all", "public" to "public") + keys.directContacts().map { "@" + it.first to "direct" } +
+            keys.groups().map { it to "group" } +
             keys.own().map { it to "own" } + keys.followed().map { it to "follow" } + listOf("other" to "other")
     }
 
     fun channelType(channel: String): String = channels().firstOrNull { it.first == channel }?.second ?: "other"
     fun canSend(channel: String): Boolean = channelType(channel) !in READ_ONLY
 
+    /** How to show a channel: the contact's name for "@handle", else the label. */
+    fun channelTitle(channel: String): String {
+        if (!channel.startsWith("@")) return channel
+        if (!locked) synchronized(lock) { keys.directContacts().firstOrNull { "@" + it.first == channel }?.let { return it.second } }
+        return channel.substring(1)
+    }
+
     fun byteCount(channel: String, text: String): Int {
         if (text.isBlank()) return 0
-        return if (channelType(channel) in setOf("group", "own"))
-            Bytes.utf8(Protocol.normalize(text.trim())).size + Crypto.FRAME_OVERHEAD
+        val t = channelType(channel)
+        return if (t in setOf("group", "own", "direct"))
+            Bytes.utf8(Protocol.normalize(text.trim())).size + Crypto.FRAME_OVERHEAD + (if (t == "direct") 1 else 0)
         else Protocol.frameLenPlain(Protocol.compose(text, callsign))
     }
 
@@ -138,11 +194,12 @@ class Node(
     // -- sending ---------------------------------------------------------------------------
 
     fun send(channel: String, text0: String, signed: Boolean = false): Msg {
-        val r = radio ?: throw KeyException("not connected to a radio")
+        val r = radio ?: throw KeyException("plug in the radio to send")
         val ctype = channelType(channel)
         val text = text0.trim()
         if (ctype in READ_ONLY) throw KeyException("'$channel' is read-only - switch to public, a group or your own stream")
-        if (locked && ctype in setOf("group", "own")) throw LockedException("identity is locked - unlock first")
+        if (locked && ctype in setOf("group", "own", "direct")) throw LockedException("identity is locked - unlock first")
+        if (ctype == "direct") return sendDirect(r, channel, text)
         val frame: ByteArray; val kind: String
         synchronized(lock) {
             if (ctype == "group" || ctype == "own") {
@@ -162,8 +219,69 @@ class Node(
         return m
     }
 
+    private fun sendDirect(r: Radio, channel: String, text: String): Msg {
+        val peer = channel.substring(1)
+        val (frame, i) = synchronized(lock) { keys.sealDirect(peer, text) }
+        val job = r.send(frame)
+        val m = Msg(Crypto.nowSeconds(), "tx", "direct", channel, handle ?: nick ?: "me", text, size = frame.size,
+            job = job, status = "queued", airtime = Protocol.airtimeMs(frame.size), verified = true,
+            peer = peer, dmId = Dm.id(i))
+        val (ch, snd) = logMeta(m)
+        m.row = log.add("tx", frame, "direct", logText(m), airtimeMs = m.airtime, channel = ch, sender = snd)
+        logged()
+        pending[job] = m
+        return m
+    }
+
+    /** Send a direct message again (no receipt came). The receiver doesn't show it twice. */
+    fun resend(m: Msg): Msg {
+        val r = radio ?: throw KeyException("plug in the radio to send")
+        if (m.kind != "direct" || m.direction != "tx" || m.peer == null) throw KeyException("only direct messages can be resent")
+        if (m.status == "queued" || m.status == "delivered") return m
+        val (frame, i) = synchronized(lock) { keys.sealDirect(m.peer, m.text, resend = true) }
+        m.dmId = Dm.id(i); m.status = "queued"
+        val job = r.send(frame)
+        m.job = job
+        pending[job] = m
+        onUpdate(m)
+        return m
+    }
+
+    private fun setStatus(m: Msg, status: String) {
+        m.status = status
+        m.row?.let { log.setStatus(it, STATUS_CODE.getValue(status)) }
+        onUpdate(m)
+    }
+
+    private fun confirm(peer: String, id: Long) {
+        val first: Boolean
+        synchronized(ackQueue) {
+            val e = ackQueue.getOrPut(peer.lowercase()) { peer to ArrayList() }
+            if (id !in e.second) e.second.add(id)
+            first = e.second.size == 1
+        }
+        if (first) {
+            val (lo, hi) = RECEIPT_DELAY
+            later(lo + Math.random() * (hi - lo)) { sendReceipts(peer.lowercase()) }
+        }
+    }
+
+    private fun sendReceipts(key: String) {
+        val e = synchronized(ackQueue) { ackQueue.remove(key) } ?: return
+        val r = radio ?: return
+        if (locked || e.second.isEmpty()) return
+        for (chunk in e.second.chunked(Dm.MAX_ACKS)) r.send(synchronized(lock) { keys.makeReceipt(e.first, chunk) })
+    }
+
+    private fun onReceipt(m: Msg) {
+        for (id in m.acks) {
+            val sent = awaiting.remove("${m.peer!!.lowercase()}|$id") ?: continue
+            if (sent.status != "delivered") setStatus(sent, "delivered")
+        }
+    }
+
     fun announce(group: String): Msg {
-        val r = radio ?: throw KeyException("not connected to a radio")
+        val r = radio ?: throw KeyException("plug in the radio to send")
         val frame = synchronized(lock) { keys.makeJoin(group) }
         val job = r.send(frame)
         val m = Msg(Crypto.nowSeconds(), "tx", "join", group, handle, "announcing myself", size = frame.size,
@@ -174,6 +292,12 @@ class Node(
 
     private fun onTx(r: TxResult) {
         val m = pending.remove(r.jobId) ?: return
+        if (m.kind == "direct" && r.ok) {
+            val id = m.dmId
+            awaiting["${m.peer!!.lowercase()}|$id"] = m
+            later(RECEIPT_WAIT) { if (m.status == "sent" && m.dmId == id) setStatus(m, "unconfirmed") }
+        }
+        if (m.status == "delivered") return            // a receipt for an earlier copy came first
         m.status = if (r.ok) "sent" else "failed"
         m.row?.let { log.setTxOk(it, r.ok) }
         onUpdate(m)
@@ -181,7 +305,94 @@ class Node(
 
     // -- receiving -------------------------------------------------------------------------
 
+    // -- TextCast numbers ----------------------------------------------------------------
+
+    val number: String get() = keys.number
+
+    /** Ask nearby devices "who has this number?". The result arrives through onLookup. */
+    fun lookup(text: String): LookupResult {
+        val number = Numbers.parse(text)
+        if (number == keys.number) throw NumberException("that is your own number")
+        if (!locked) keys.contactByNumber(number)?.let {
+            return LookupResult(number, "known", name = it.name, handle = it.handle)
+        }
+        val r = radio ?: throw KeyException("plug in the radio to send")
+        synchronized(lookups) { lookups[number] = LinkedHashMap() }
+        r.send(Numbers.makeLookup(number))
+        later(LOOKUP_RETRY) {
+            val none = synchronized(lookups) { lookups[number]?.isEmpty() == true }
+            if (none) radio?.send(Numbers.makeLookup(number))
+        }
+        later(LOOKUP_WAIT) {
+            val none = synchronized(lookups) { if (lookups[number]?.isEmpty() == true) { lookups.remove(number); true } else false }
+            if (none) onLookup(LookupResult(number, "notfound"))
+        }
+        return LookupResult(number, "searching")
+    }
+
+    /** Save the person found by lookup(); returns their chat channel "@handle". */
+    fun addFound(number: String, name: String? = null): String {
+        val found = synchronized(lookups) { lookups[number]?.toList() }
+        if (found == null || found.size != 1) throw KeyException("nobody (or more than one key) answered for that number")
+        val (pubHex, nick) = found[0]
+        val pub = Bytes.unhex(pubHex)
+        synchronized(lock) { keys.addFound(pub, nick, number, name) }
+        synchronized(lookups) { lookups.remove(number) }
+        return "@" + Ids.makeHandle(nick, pub)
+    }
+
+    fun setFindable(on: Boolean) = synchronized(lock) { keys.setFindable(on) }
+
+    private fun onDirectory(pkt: Packet) {
+        val now = Crypto.nowSeconds()
+        when (val d = Numbers.parseFrame(pkt.payload)) {
+            null -> return
+            is Numbers.Frame.Lookup -> {
+                val nk = nick
+                if (d.number == keys.number && keys.findable && nk != null && radio != null && now - lastAnswer > ANSWER_GAP) {
+                    lastAnswer = now
+                    val (lo, hi) = ANSWER_DELAY
+                    later(lo + Math.random() * (hi - lo)) {
+                        val r = radio ?: return@later
+                        for (f in Numbers.makeAnswer(keys.pub, nk, (Math.random() * 256).toInt(), Protocol.profile.maxPayload)) r.send(f)
+                    }
+                }
+            }
+            is Numbers.Frame.Answer -> {
+                val data: ByteArray
+                synchronized(parts) {
+                    parts.entries.removeIf { now - it.value.first > 30 }
+                    var st = parts[d.id]
+                    if (st == null || st.second != d.parts) { st = Triple(now, d.parts, HashMap()); parts[d.id] = st }
+                    st.third[d.part] = d.chunk
+                    if (st.third.size < d.parts) return
+                    parts.remove(d.id)
+                    data = Bytes.concat(*Array(d.parts) { st.third[it]!! })
+                }
+                if (data.size < 33) return
+                val pub = data.copyOfRange(0, 32)
+                val nk = Bytes.utf8Lenient(data.copyOfRange(32, data.size))
+                if (synchronized(lookups) { lookups.isEmpty() }) return
+                val number = Numbers.numberOf(pub)
+                val result = synchronized(lookups) {
+                    val look = lookups[number] ?: return
+                    if (look.containsKey(Bytes.hex(pub))) return
+                    look[Bytes.hex(pub)] = nk
+                    if (look.size == 1) LookupResult(number, "found", nk, Ids.makeHandle(nk, pub))
+                    else LookupResult(number, "conflict", look.values.joinToString(", "))
+                }
+                onLookup(result)
+            }
+        }
+    }
+
     private fun onPacket(pkt: Packet) {
+        if (Numbers.isDirectory(pkt.payload)) {
+            log.add("rx", pkt.payload, "lookup", null, pkt.rssi, pkt.snr, ts = pkt.t)
+            logged()
+            onDirectory(pkt)
+            return
+        }
         if (locked && Protocol.decode(pkt.payload).kind == "reserved") {
             val row = log.add("rx", pkt.payload, "pending", null, pkt.rssi, pkt.snr, ts = pkt.t)
             logged()
@@ -191,6 +402,21 @@ class Node(
             return
         }
         val m = classify(pkt)
+        if (m.kind == "receipt") {
+            log.add("rx", pkt.payload, "receipt", null, pkt.rssi, pkt.snr, ts = pkt.t)
+            logged()
+            onReceipt(m)
+            return
+        }
+        if (m.kind == "direct") {
+            confirm(m.peer!!, m.dmId!!)
+            val key = "${m.peer.lowercase()}|${m.text}"
+            val now = Crypto.nowSeconds()
+            synchronized(seenDm) {
+                if (m.resent && now - (seenDm[key] ?: 0.0) < RESEND_SAME) return   // shown already: just confirm
+                seenDm[key] = now
+            }
+        }
         val (ch, snd) = logMeta(m)
         m.row = log.add("rx", pkt.payload, m.kind, logText(m), pkt.rssi, pkt.snr, ts = pkt.t, channel = ch, sender = snd)
         logged()
@@ -223,6 +449,14 @@ class Node(
         }
         if (d.kind == "reserved") {
             val op = synchronized(lock) { keys.open(pkt.payload) }
+            if (op != null && op.kind == "direct") {
+                val peer = op.source.substring(1)
+                if (op.inner == "receipt")
+                    return Msg(pkt.t, "rx", "receipt", op.source, op.sender, "", pkt.rssi, pkt.snr, pkt.payload.size,
+                        verified = true, peer = peer, acks = op.acks)
+                return Msg(pkt.t, "rx", "direct", op.source, op.sender, Protocol.clean(op.text), pkt.rssi, pkt.snr,
+                    pkt.payload.size, verified = true, peer = peer, dmId = Dm.id(op.counter), resent = op.inner == "resend")
+            }
             if (op != null) {
                 if (op.group) return mk(op.kind, op.source, op.sender, Protocol.clean(op.text), group = true)
                 val name = synchronized(lock) { if (op.verified) keys.display(op.sender, op.pub) else op.sender }
@@ -269,6 +503,7 @@ class Node(
         val out = ArrayList<Msg>()
         val c = cipher
         for (r in log.rows(n)) {
+            if (r.kind in QUIET) continue
             var text = r.text; var channel = r.channel; var sender = r.sender
             if (listOf(text, channel, sender).any { it != null && it.startsWith(LogCipher.PREFIX) }) {
                 if (c == null) continue
@@ -280,10 +515,11 @@ class Node(
             if (sender != null && sender.length > 1 && sender[1] == ':' && sender[0] in "gvu") {
                 flag = sender.substring(0, 1); name = sender.substring(2)
             }
-            val status = if (r.direction == "tx") (if (r.txOk == 1) "sent" else "failed") else null
+            val status = if (r.direction == "tx") STATUS_NAME[r.txOk] ?: "failed" else null
             out.add(Msg(r.ts, r.direction, r.kind ?: "plain",
                 channel ?: (if (r.kind == "plain") "public" else "other"), name, text, r.rssi, r.snr, r.payload.size,
-                status = status, airtime = r.airtimeMs, verified = flag == "v", group = flag == "g", row = r.id))
+                status = status, airtime = r.airtimeMs, verified = flag == "v", group = flag == "g", row = r.id,
+                peer = channel?.takeIf { it.startsWith("@") }?.substring(1)))
         }
         return out
     }

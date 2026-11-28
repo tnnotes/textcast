@@ -187,6 +187,15 @@ const Ed25519 = (() => {
   const hq = (...parts) => mod(leToInt(Bytes.sha512(Bytes.concat(...parts))), Q);
 
   const publicKey = (seed) => compress(mul(expand(seed)[0], G));
+  // Diffie-Hellman with the identity keys themselves: a_me * A_peer == a_peer * A_me.
+  // null for a key that is not a point or gives the neutral point (small order).
+  function sharedPoint(seed, peerPub) {
+    const A = decompress(peerPub);
+    if (!A) return null;
+    const S = mul(expand(seed)[0], A);
+    if (equalPt(S, [0n, 1n, 1n, 0n])) return null;
+    return compress(S);
+  }
   function sign(seed, msg) {
     const [a, prefix] = expand(seed);
     const pub = compress(mul(a, G));
@@ -204,7 +213,7 @@ const Ed25519 = (() => {
     if (s >= Q) return false;
     return equalPt(mul(s, G), add(R, mul(hq(Rb, pub, msg), A)));
   }
-  return { publicKey, sign, verify };
+  return { publicKey, sign, verify, sharedPoint };
 })();
 
 // scrypt (RFC 7914). n = 2^15, r = 8 needs 32 MiB and takes about a second in a browser.

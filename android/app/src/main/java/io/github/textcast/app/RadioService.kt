@@ -65,7 +65,7 @@ class RadioService : Service() {
         private fun build(ctx: Context, unread: Int, last: String?): Notification {
             channel(ctx)
             val s = ctx.session
-            val open = Intent(ctx, ChatActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val open = Intent(ctx, ChatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             val flags = if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0
             val pi = PendingIntent.getActivity(ctx, 0, open, flags or PendingIntent.FLAG_UPDATE_CURRENT)
             val p = s.profile()

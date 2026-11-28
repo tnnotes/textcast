@@ -7,8 +7,9 @@ import android.widget.TextView
 import io.github.textcast.core.KeyException
 import io.github.textcast.core.Node
 
-/** Dialogs for streams, groups, contacts and the own identity. */
-class KeysUi(private val a: Activity, private val node: Node, private val changed: () -> Unit) {
+/** Dialogs for streams, groups, people (contacts) and the own identity. */
+class KeysUi(private val a: Activity, private val node: Node, private val changed: () -> Unit,
+             private val openChat: (String) -> Unit = {}) {
 
     fun showKeys() {
         val items = node.keys.listing()
@@ -40,7 +41,7 @@ class KeysUi(private val a: Activity, private val node: Node, private val change
             .setNegativeButton("Close", null).show()
     }
 
-    private fun keyActions(label: String, type: String) {
+    fun keyActions(label: String, type: String) {
         val actions = mutableListOf("Share the key string")
         if (type == "group") { actions.add("Announce me to the group"); actions.add("Add a member by handle…") }
         actions.add("Delete")
@@ -67,7 +68,7 @@ class KeysUi(private val a: Activity, private val node: Node, private val change
         }.show()
     }
 
-    private fun newGroup() {
+    fun newGroup() {
         val f = a.field("Group name (one word)")
         a.form("New group", "Members share one key; anyone holding the group string can read and post.", listOf(f), "Create") {
             try {
@@ -100,7 +101,11 @@ class KeysUi(private val a: Activity, private val node: Node, private val change
             try {
                 val (label, type) = node.keyAdd(s.text.toString(), name.text.toString().trim().ifEmpty { null })
                 changed()
-                a.toast(when (type) { "group" -> "Joined group $label"; "follow" -> "Following $label"; else -> "Saved contact $label" })
+                if (type == "contact") {
+                    val handle = node.keys.directContacts().firstOrNull { it.second == label }?.first
+                    if (handle != null) a.confirm("$label added", "Send $label a private message now? They need your identity string too.",
+                        "Message $label") { openChat("@$handle") }
+                } else a.toast(when (type) { "group" -> "Joined group $label"; else -> "Following $label" })
                 null
             } catch (e: KeyException) { e.text() }
         }
@@ -112,13 +117,25 @@ class KeysUi(private val a: Activity, private val node: Node, private val change
             "Fingerprint ${node.keys.fingerprint()}\nCompare the fingerprint in person before trusting a key.")
     }
 
+    /** People you can message privately: exchange identity strings, then tap a name. */
     fun showContacts() {
-        val cs = node.keys.contacts()
-        if (cs.isEmpty()) { a.info("Contacts", "No contacts yet. Add one with \"Add a key string\" and their lid1: string."); return }
-        val names = cs.map { (n, h, fp) -> "$n\n$h · $fp" }
-        AlertDialog.Builder(a).setTitle("Contacts").setItems(names.toTypedArray()) { _, w ->
-            val c = cs[w]
-            a.confirm("Delete ${c.first}", "Remove this contact?", "Delete") { node.contactDel(c.first) }
+        val me = node.handle
+        val cs = node.keys.contacts().filter { it.second != me }
+        val names = cs.map { (n, h, fp) -> "👤 $n\n$h · $fp" } + listOf("+ Add a person (paste their lid1: string)", "Share my identity string")
+        AlertDialog.Builder(a).setTitle("People").setItems(names.toTypedArray()) { _, w ->
+            when (w - cs.size) {
+                0 -> addKey()
+                1 -> showIdentity()
+                else -> {
+                    val c = cs[w]
+                    AlertDialog.Builder(a).setTitle(c.first).setItems(arrayOf("Send a private message", "Delete")) { _, k ->
+                        if (k == 0) openChat("@" + c.second)
+                        else a.confirm("Delete ${c.first}", "Remove this person? You can add them again with their identity string.", "Delete") {
+                            node.contactDel(c.first); changed()
+                        }
+                    }.show()
+                }
+            }
         }.setNegativeButton("Close", null).show()
     }
 }

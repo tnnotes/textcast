@@ -19,10 +19,11 @@ class RadioTest {
         private val out = LinkedBlockingQueue<Byte>()
         private val line = StringBuilder()
         val written = CopyOnWriteArrayList<String>()
+        @Volatile var muted = false                 // what it sends is lost (to test missing receipts)
         init { air.modules.add(this) }
 
         protected fun print(s: String) { for (b in (s + "\r\n").toByteArray()) out.put(b) }
-        protected fun broadcast(payload: ByteArray) { for (m in air.modules) if (m !== this) m.hear(payload) }
+        protected fun broadcast(payload: ByteArray) { if (!muted) for (m in air.modules) if (m !== this) m.hear(payload) }
         abstract fun hear(payload: ByteArray)
         abstract fun command(cmd: String)
 
@@ -161,5 +162,97 @@ class RadioTest {
         val again = Node(File(dir, "keys-Tuan.lkey"), "Tuan", "tuan-passphrase", File(dir, "log-Tuan.jsonl"))
         assertTrue(again.history().any { it.text == "bí mật" && it.group })
         again.stop()
+    }
+
+    @Test fun directMessagesAndReceipts() {
+        val air = Air()
+        val dir = tmp()
+        Node.RECEIPT_DELAY = 0.05 to 0.1; Node.RECEIPT_WAIT = 1.0
+        val tuan = Node(File(dir, "keys-Tuan.json"), "Tuan", null, File(dir, "log-Tuan.jsonl"))
+        val lan = Node(File(dir, "keys-Lan.json"), "Lan", null, File(dir, "log-Lan.jsonl"))
+        val lq = LinkedBlockingQueue<Msg>(); val tq = LinkedBlockingQueue<Msg>(); val tu = LinkedBlockingQueue<String>()
+        lan.onMsg = { lq.put(it) }; tuan.onMsg = { tq.put(it) }; tuan.onUpdate = { tu.put(it.status ?: "") }
+        val lanModule = FakeLa66(air)
+        tuan.start(La66Radio(FakeLa66(air), settle = 0.0, resetWait = 0.3))
+        lan.start(La66Radio(lanModule, settle = 0.0, resetWait = 0.3))
+        assertEquals("Lan" to "contact", tuan.keyAdd(lan.keys.lid()))
+        lan.keyAdd(tuan.keys.lid())
+        val ch = "@" + lan.handle
+        assertTrue(tuan.channels().contains(ch to "direct"))
+        assertEquals("Lan", tuan.channelTitle(ch))
+        assertEquals(2 + 8, tuan.byteCount(ch, "hi"))
+
+        val m = tuan.send(ch, "gặp lúc 7 giờ")
+        val got = lq.poll(5, TimeUnit.SECONDS)!!
+        assertEquals("direct", got.kind); assertEquals("Tuan", got.sender); assertEquals("gặp lúc 7 giờ", got.text)
+        assertEquals("@" + tuan.handle, got.channel)
+        assertEquals("sent", tu.poll(5, TimeUnit.SECONDS))
+        assertEquals("delivered", tu.poll(5, TimeUnit.SECONDS))   // Lan's app confirmed by itself
+        assertEquals("delivered", m.status)
+        assertEquals(null, tq.poll(300, TimeUnit.MILLISECONDS))       // receipts are not messages
+        assertTrue(tuan.history().any { it.kind == "direct" && it.status == "delivered" })
+
+        lanModule.muted = true                                          // Lan's receipt gets lost
+        val m2 = tuan.send(ch, "còn đó không?")
+        assertEquals("còn đó không?", lq.poll(5, TimeUnit.SECONDS)!!.text)
+        assertEquals("sent", tu.poll(5, TimeUnit.SECONDS))
+        assertEquals("unconfirmed", tu.poll(5, TimeUnit.SECONDS))
+        lanModule.muted = false
+        tuan.resend(m2)
+        assertEquals("queued", tu.poll(5, TimeUnit.SECONDS))
+        assertEquals("sent", tu.poll(5, TimeUnit.SECONDS))
+        assertEquals("delivered", tu.poll(5, TimeUnit.SECONDS))
+        assertEquals(null, lq.poll(300, TimeUnit.MILLISECONDS))       // not shown twice
+        tuan.stop(); lan.stop()
+        Node.RECEIPT_DELAY = 1.0 to 4.0; Node.RECEIPT_WAIT = 30.0
+    }
+
+    @Test fun findByNumber() {
+        val air = Air()
+        val dir = tmp()
+        Node.ANSWER_DELAY = 0.05 to 0.1; Node.LOOKUP_RETRY = 2.0; Node.LOOKUP_WAIT = 4.0; Node.ANSWER_GAP = 0.0
+        val tuan = Node(File(dir, "keys-Tuan.json"), "Tuan", null, File(dir, "log-Tuan.jsonl"))
+        val lan = Node(File(dir, "keys-Lan.json"), "Lan", null, File(dir, "log-Lan.jsonl"))
+        val found = LinkedBlockingQueue<Node.LookupResult>()
+        val lq = LinkedBlockingQueue<Msg>()
+        tuan.onLookup = { found.put(it) }; lan.onMsg = { lq.put(it) }
+        tuan.start(La66Radio(FakeLa66(air), settle = 0.0, resetWait = 0.3))
+        lan.start(La66Radio(FakeLa66(air), settle = 0.0, resetWait = 0.3))
+        assertEquals("searching", tuan.lookup(Numbers.format(lan.number)).status)
+        val r = found.poll(8, TimeUnit.SECONDS)!!
+        assertEquals("found", r.status); assertEquals("Lan", r.nick)
+        val ch = tuan.addFound(lan.number)
+        assertEquals("@" + lan.handle, ch)
+        assertTrue(!tuan.keys.contactInfo()[0].verified)
+        assertEquals("known", tuan.lookup(lan.number).status)
+        assertEquals(null, lq.poll(300, TimeUnit.MILLISECONDS))         // lookups are not messages
+        lan.setFindable(false)
+        val c = Node(File(dir, "keys-Minh.json"), "Minh", null, File(dir, "log-Minh.jsonl"))
+        c.setFindable(false)
+        c.start(La66Radio(FakeLa66(air), settle = 0.0, resetWait = 0.3))
+        tuan.lookup(c.number)
+        assertEquals("notfound", found.poll(8, TimeUnit.SECONDS)!!.status)
+        tuan.stop(); lan.stop(); c.stop()
+        Node.ANSWER_DELAY = 0.3 to 1.5; Node.LOOKUP_RETRY = 4.0; Node.LOOKUP_WAIT = 10.0; Node.ANSWER_GAP = 3.0
+    }
+
+    @Test fun unplugAndPlugBack() {
+        val air = Air()
+        val dir = tmp()
+        val n = Node(File(dir, "keys-Tuan.json"), "Tuan", null, File(dir, "log-Tuan.jsonl"))
+        val r1 = La66Radio(FakeLa66(air), settle = 0.0, resetWait = 0.3)
+        n.start(r1)
+        for (k in 0 until 6) n.send("public", "hello $k")          // more than the burst: some wait
+        Thread.sleep(500)
+        val spent = r1.meter.totalMs()
+        assertTrue(spent > 0)
+        val waiting = n.history().filter { it.direction == "tx" }.size
+        n.detachRadio()                                             // unplugged
+        try { n.send("public", "now"); throw AssertionError("sent without a radio") } catch (e: KeyException) { }
+        val r2 = La66Radio(FakeLa66(air), settle = 0.0, resetWait = 0.3)
+        n.start(r2)                                                 // plugged back in
+        assertEquals(spent, r2.meter.totalMs(), 0.001)
+        assertTrue(waiting >= 6)
+        n.stop()
     }
 }

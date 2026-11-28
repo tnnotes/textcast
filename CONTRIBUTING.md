@@ -21,7 +21,14 @@ manually.
 cd android && ./gradlew testDebugUnitTest
 ```
 
-The Kotlin core must stay byte-compatible with the Python core. After changing
+**Web app** (JavaScript core; Node.js 18+):
+
+```bash
+python3 web/build.py && node --test web/tests/*.test.js
+python3 web/tests/e2e_browser.py     # optional: the whole page in Chromium with a simulated LA66 (needs Playwright)
+```
+
+The Kotlin and JavaScript cores must stay byte-compatible with the Python core. After changing
 anything on air or in a file format, regenerate the vectors and check both
 directions (see [docs/RELEASING.md](docs/RELEASING.md), step 1).
 
@@ -29,7 +36,7 @@ directions (see [docs/RELEASING.md](docs/RELEASING.md), step 1).
 
 - `lora_text/` is the core: protocol, crypto, keys, driver, node. It has no UI
   code and no third-party dependencies apart from `pyserial`.
-- `chat.py` and `simple_chat.py` are user interfaces on top of `lora_text.node.Node`.
+- `chat.py` is the terminal user interface on top of `lora_text.node.Node`; `web/src/` is the web app (JavaScript core + page).
 - `android/app/src/main/java/io/github/textcast/core/` is the Kotlin port of
   `lora_text/` (same names: `Protocol`, `Crypto`, `Keyring`, `Node`, …);
   `…/app/` holds the Android screens.

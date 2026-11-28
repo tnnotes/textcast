@@ -71,6 +71,7 @@ class Session(val app: Application) {
         fun onUpdate(m: Msg) {}
         fun onLog(text: String) {}
         fun onState() {}
+        fun onLookup(r: Node.LookupResult) {}
     }
 
     val main = Handler(Looper.getMainLooper())
@@ -85,6 +86,10 @@ class Session(val app: Application) {
     var startProblems: List<String> = emptyList(); private set
     var visible = false
     var unread = 0
+    var openChannel: String? = null                     // the conversation on screen
+    val unreadBy = HashMap<String, Int>()               // chat -> messages not seen yet
+    private var lastUsbKey: String? = null              // the module to look for when it comes back
+    @Volatile private var attaching = false
 
     init {
         loadSettings()
@@ -98,6 +103,22 @@ class Session(val app: Application) {
         val f = android.content.IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED)
         if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(detach, f, Context.RECEIVER_NOT_EXPORTED)
         else app.registerReceiver(detach, f)
+        // the module was plugged back in (or USB permission granted): reconnect by itself
+        val attach = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) {
+                if (i.action == ACTION_REATTACH && !i.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                    main.post { addSystem("USB permission refused - the radio stays off"); listeners.forEach { it.onState() } }
+                    return
+                }
+                main.postDelayed({ reattach() }, 700)       // give the module a moment to start
+            }
+        }
+        val fa = android.content.IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+        if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(attach, fa, Context.RECEIVER_EXPORTED)
+        else app.registerReceiver(attach, fa)
+        val fp = android.content.IntentFilter(ACTION_REATTACH)
+        if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(attach, fp, Context.RECEIVER_NOT_EXPORTED)
+        else app.registerReceiver(attach, fp)
     }
 
     private var deviceName: String? = null
@@ -185,44 +206,89 @@ class Session(val app: Application) {
         n.onMsg = { m -> main.post { addMessage(m); listeners.forEach { it.onMessage(m) }; notifyIfHidden(m) } }
         n.onUpdate = { m -> main.post { listeners.forEach { it.onUpdate(m) } } }
         n.onLog = { s -> main.post { addSystem(s); listeners.forEach { it.onLog(s) } } }
+        n.onLookup = { r -> main.post { listeners.forEach { it.onLookup(r) } } }
         var problems = emptyList<String>()
-        if (usb != null) {
-            val conn = usbManager().openDevice(usb.device)
-                ?: run { n.stop(); throw IllegalStateException("no permission to open ${usb.label}") }
-            val port = usb.driver.ports[0]
-            try {
-                port.open(conn)
-                port.setParameters(hw.baud, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-                try { port.setDTR(true); port.setRTS(true) } catch (e: Exception) { }
-            } catch (e: Exception) {
-                try { port.close() } catch (x: Exception) { }
-                n.stop()
-                throw IllegalStateException("cannot open ${usb.label}: ${e.message}")
-            }
-            val link = UsbLink(port) { try { conn.close() } catch (e: Exception) { } }
-            try {
-                problems = n.start(makeRadio(hw, link, hw.baud))
-            } catch (e: Exception) {
-                n.stop()
-                throw e
+        var radioError: String? = null
+        if (usb != null) {           // a module that doesn't open doesn't stop the login: plug it in again later
+            try { problems = openRadio(n, usb) } catch (e: Exception) {
+                try { n.detachRadio() } catch (x: Exception) { }
+                radioError = e.message ?: "cannot open the radio"
             }
         }
+        val opened = usb != null && radioError == null
         val hist = n.history()
         main.post {
             node = n
-            deviceLabel = usb?.label
-            deviceName = usb?.device?.deviceName
+            deviceLabel = if (opened) usb?.label else null
+            deviceName = if (opened) usb?.device?.deviceName else null
+            lastUsbKey = usb?.key ?: (config()["ui"].asMap()["port"] as? String)
+            unreadBy.clear()
             startProblems = problems
             messages.clear(); messages.addAll(hist)
             unread = 0
-            if (usb != null) RadioService.start(app)
+            if (opened) RadioService.start(app)
+            if (radioError != null) addSystem("radio not ready ($radioError) - unplug it and plug it in again")
+            else if (usb == null) addSystem("no radio yet - plug it in to send, TextCast connects by itself")
             listeners.forEach { it.onState() }
         }
     }
 
+    /** Open the USB module and start the radio on [n]. Blocks a few seconds. */
+    private fun openRadio(n: Node, usb: UsbChoice): List<String> {
+        val conn = usbManager().openDevice(usb.device)
+            ?: throw IllegalStateException("no permission to open ${usb.label}")
+        val port = usb.driver.ports[0]
+        try {
+            port.open(conn)
+            port.setParameters(hw.baud, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+            try { port.setDTR(true); port.setRTS(true) } catch (e: Exception) { }
+        } catch (e: Exception) {
+            try { port.close() } catch (x: Exception) { }
+            try { conn.close() } catch (x: Exception) { }
+            throw IllegalStateException("cannot open ${usb.label}: ${e.message}")
+        }
+        val link = UsbLink(port) { try { conn.close() } catch (e: Exception) { } }
+        return n.start(makeRadio(hw, link, hw.baud))
+    }
+
+    /** The module is back (plugged in again): reconnect without logging out. */
+    fun reattach() {
+        val n = node ?: return
+        if (n.radio != null || attaching) return
+        val all = usbChoices()
+        val usb = all.firstOrNull { it.key == lastUsbKey } ?: all.firstOrNull() ?: return
+        if (!usbManager().hasPermission(usb.device)) {
+            val i = Intent(ACTION_REATTACH).setPackage(app.packageName)
+            val flags = if (Build.VERSION.SDK_INT >= 31) android.app.PendingIntent.FLAG_MUTABLE else 0
+            usbManager().requestPermission(usb.device, android.app.PendingIntent.getBroadcast(app, 1, i, flags))
+            return
+        }
+        attaching = true
+        main.post { listeners.forEach { it.onState() } }
+        Thread {
+            try {
+                val problems = openRadio(n, usb)
+                main.post {
+                    deviceLabel = usb.label
+                    deviceName = usb.device.deviceName
+                    lastUsbKey = usb.key
+                    addSystem(if (problems.isEmpty()) "radio connected" else "radio connected, but: " + problems.joinToString("; "))
+                    RadioService.start(app)
+                    listeners.forEach { it.onState() }
+                }
+            } catch (e: Exception) {
+                try { n.detachRadio() } catch (x: Exception) { }
+                main.post { addSystem("the radio is plugged in but could not be opened: ${e.message}"); listeners.forEach { it.onState() } }
+            } finally { attaching = false }
+        }.start()
+    }
+
+    val reconnecting: Boolean get() = attaching
+
     fun disconnect() {
         val n = node ?: return
         node = null
+        lastUsbKey = null
         deviceLabel = null
         deviceName = null
         Thread { try { n.stop() } catch (e: Exception) { } }.start()
@@ -237,7 +303,10 @@ class Session(val app: Application) {
         deviceName = null
         Thread { try { n.detachRadio() } catch (e: Exception) { } }.start()
         RadioService.stop(app)
-        main.post { addSystem("radio module disconnected - log out and start again after plugging it back in") }
+        main.post {
+            addSystem("radio unplugged - plug it back in, TextCast reconnects by itself")
+            listeners.forEach { it.onState() }
+        }
     }
 
     // -- messages -----------------------------------------------------------------------
@@ -253,20 +322,36 @@ class Session(val app: Application) {
     }
 
     private fun notifyIfHidden(m: Msg) {
+        if (m.direction == "rx" && m.kind !in setOf("undecoded", "locked", "pending") && m.channel != "other" &&
+            !(visible && m.channel == openChannel)) unreadBy[m.channel] = (unreadBy[m.channel] ?: 0) + 1
         if (visible || m.direction != "rx" || m.kind in setOf("undecoded", "locked")) return
         unread++
-        RadioService.update(app, unread, "${m.sender ?: "?"}: ${m.text}")
+        // private messages: who wrote, not what (the notification can show on the lock screen)
+        RadioService.update(app, unread, if (m.kind == "direct") "👤 ${m.sender ?: "?"} sent you a private message"
+                                         else "${m.sender ?: "?"}: ${m.text}")
     }
 
     fun profile(): AirProfile = Protocol.profile
 
+    /** Open the chat list (home screen). */
     fun openChat(ctx: Context) {
-        val i = Intent(ctx, ChatActivity::class.java)
+        val i = Intent(ctx, ChatsActivity::class.java)
         if (ctx !is android.app.Activity) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         ctx.startActivity(i)
     }
 
+    /** Open one conversation ("public", "@handle", a group…). */
+    fun openConversation(ctx: Context, channel: String) {
+        val i = Intent(ctx, ChatActivity::class.java).putExtra(ChatActivity.EXTRA_CHANNEL, channel)
+        if (ctx !is android.app.Activity) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(i)
+    }
+
+    /** The newest message of a chat (for the chat list). */
+    fun lastOf(channel: String): Msg? = messages.lastOrNull { it.channel == channel && it.direction != "sys" }
+
     companion object {
         val SDK = Build.VERSION.SDK_INT
+        const val ACTION_REATTACH = "io.github.textcast.USB_REATTACH"
     }
 }

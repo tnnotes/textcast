@@ -131,8 +131,8 @@ abstract class Radio(
     var onLog: (String) -> Unit = {},
 ) {
     val p: AirProfile get() = Protocol.profile
-    val limiter = RateLimiter(Protocol.profile.ratePerS, Protocol.profile.burst)
-    val meter = AirtimeMeter()
+    var limiter = RateLimiter(Protocol.profile.ratePerS, Protocol.profile.burst)   // Node carries these over a replug
+    var meter = AirtimeMeter()
     val banner = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     protected val wlock = Any()

@@ -29,7 +29,7 @@ def main() -> int:
     global OUT
     if len(sys.argv) > 1:
         OUT = os.path.abspath(sys.argv[1])
-    who = "JavaScript" if len(sys.argv) > 1 else "Kotlin"
+    who = "JavaScript" if len(sys.argv) > 1 and "web" in sys.argv[1] else "Kotlin"
     k = json.load(open(os.path.join(OUT, "kotlin.json"), encoding="utf-8"))
     vec = json.load(open(VEC, encoding="utf-8"))
     fails = 0
@@ -62,6 +62,21 @@ def main() -> int:
         lan.follow(k["minh_share_radio"])                     # signature made in Kotlin verifies here
         check(f"{who} stream signature verifies in Python", lan.data["follow"]["radio"]["verified"])
         minh.close(); lan.close()
+
+    if "direct_text" in k:
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "keys-Lan.json")
+            shutil.copy(os.path.join(OUT, "keys-Lan-direct.json"), p)
+            lan = K.Keyring(p, me="Lan")
+            o = lan.open(bytes.fromhex(k["direct_text"]))
+            check(f"{who} direct message opens in Python", o is not None and o.kind == "direct"
+                  and o.inner == "text" and o.text in ("từ trình duyệt", "từ Android"), o)
+            o = lan.open(bytes.fromhex(k["direct_receipt"]))
+            check(f"{who} receipt opens in Python", o is not None and o.inner == "receipt"
+                  and o.acks == (77, 5), o)
+            lan.close()
+    else:
+        check(f"{who} direct messages", False, "no direct frames written")
 
     data = V.unpack(bytes.fromhex(k["vault_blob"]), "kotlin-pass")
     check(f"{who} vault opens in Python", data == {"me": "K", "n": 5}, data)

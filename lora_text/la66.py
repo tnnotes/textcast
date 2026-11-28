@@ -14,6 +14,7 @@ Behaviour confirmed on the bench (2026-11-21):
 from __future__ import annotations
 
 import itertools
+import os
 import queue
 import random
 import re
@@ -207,7 +208,8 @@ class LA66Radio:
                  fetch_snr: bool = True,
                  limiter: Optional[RateLimiter] = None,
                  serial_obj=None):
-        self.port, self.baud, self.p = port, baud, profile
+        self.auto = not port or port == "auto"     # no port chosen: use the LA66 when it is plugged in
+        self.port, self.baud, self.p = (None if self.auto else port), baud, profile
         self.on_packet = on_packet or (lambda pkt: None)
         self.on_tx = on_tx or (lambda r: None)
         self.on_log = on_log or (lambda s: None)
@@ -226,13 +228,26 @@ class LA66Radio:
         self._running = False
         self._pending: Optional[dict] = None
         self.banner: dict[str, str] = {}
+        self.on_state: Callable[[str], None] = lambda state: None   # 'lost' | 'back'
+        self.plugged = True
+        self._reopen = serial_obj is None       # we opened the port: we can reopen it
+        self._skip: dict[str, float] = {}       # ports that did not answer like an LA66 -> when
 
     # -- lifecycle ---------------------------------------------------------
 
     def open(self) -> None:
+        """Open the port. With no port (auto) or the module not plugged in, start anyway:
+        the reader keeps looking and on_state('back') fires when it appears."""
         if self._ser is None:
-            import serial  # pyserial
-            self._ser = serial.Serial(self.port, self.baud, timeout=0.1)
+            try:
+                if not self.port:
+                    raise OSError("no radio module plugged in")
+                import serial  # pyserial
+                self._ser = serial.Serial(self.port, self.baud, timeout=0.1)
+            except Exception:
+                if not self._reopen or not (self.auto or self.port):
+                    raise
+                self.plugged = False
         self._running = True
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._writer = threading.Thread(target=self._write_loop, daemon=True)
@@ -243,13 +258,16 @@ class LA66Radio:
         self._running = False
         time.sleep(0.2)
         try:
-            self._ser.close()
+            if self._ser is not None:
+                self._ser.close()
         except Exception:
             pass
 
     # -- public API --------------------------------------------------------
 
     def send(self, frame: bytes) -> int:
+        if not self.plugged:
+            raise OSError("the radio is not plugged in")
         if len(frame) > self.p.max_payload:
             raise ValueError(f"frame {len(frame)} B exceeds {self.p.max_payload} B")
         job = next(self._ids)
@@ -286,18 +304,97 @@ class LA66Radio:
     # -- internals ---------------------------------------------------------
 
     def _write(self, cmd: str) -> None:
+        if not self.plugged:
+            raise OSError("LA66 is unplugged")
         with self._wlock:
             self._ser.write((cmd + "\r\n").encode("ascii"))
             self._ser.flush()
 
+    # -- unplug / plug back ------------------------------------------------
+
+    def _lost(self, err: Exception) -> None:
+        if not self.plugged:
+            return
+        self.plugged = False
+        self.on_log(f"serial error: {err}")
+        try:
+            self._ser.close()
+        except Exception:
+            pass
+        self._tx_done.set()                  # let a transmission in progress fail now
+        self._fail_queued()
+        self.on_state("lost")
+
+    def _fail_queued(self) -> None:
+        """Frames waiting to be sent fail now: sealed frames carry a time-based counter
+        and would be refused if sent much later. The user resends after plugging in."""
+        while True:
+            try:
+                job, frame = self._txq.get_nowait()
+            except queue.Empty:
+                return
+            self.on_tx(TxResult(job, False, 0.0, "radio unplugged"))
+
+    def reject(self, why: str) -> None:
+        """The port opened but is not the radio (auto mode): let it go, look elsewhere."""
+        self.on_log(f"{self.port}: {why} - not using it")
+        if self.port:
+            self._skip[self.port] = time.monotonic()
+        try:
+            self._ser.close()
+        except Exception:
+            pass
+        self.plugged = False
+        if self.auto:
+            self.port = None
+
+    def _candidates(self) -> list[str]:
+        """The same port name first; else the only USB serial port present
+        (Linux may renumber /dev/ttyUSB0 -> ttyUSB1 after a replug)."""
+        names = [d for d, _ in list_ports()]
+        if self.port in names:
+            return [self.port]
+        now = time.monotonic()
+        usb = [d for d in names if any(k in d for k in ("usb", "USB", "ACM", "COM"))
+               and now - self._skip.get(d, -1e9) > 60]
+        if self.auto:
+            return usb                     # try each until one answers like an LA66
+        return usb if len(usb) == 1 else []
+
+    def _try_reopen(self) -> bool:
+        names = self._candidates()
+        if not names:
+            return False
+        import serial  # pyserial
+        for name in names:
+            try:
+                self._ser = serial.Serial(name, self.baud, timeout=0.1)
+            except Exception:
+                continue
+            if name != self.port:
+                self.on_log(f"radio found on {name}" if self.auto else f"LA66 is now on {name}")
+                self.port = name
+            self.plugged = True
+            self.on_state("back")
+            return True
+        return False
+
     def _read_loop(self) -> None:
         buf = b""
         while self._running:
+            if not self.plugged:
+                if not (self._reopen and self._try_reopen()):
+                    time.sleep(1.0)
+                continue
             try:
                 chunk = self._ser.readline()
             except Exception as e:  # unplugged etc.
-                self.on_log(f"serial error: {e}")
-                time.sleep(0.5)
+                buf = b""
+                if self._reopen:
+                    self._lost(e)
+                else:
+                    self.on_log(f"serial error: {e}")
+                    time.sleep(0.5)
                 continue
             if chunk:
                 buf += chunk
@@ -307,6 +404,11 @@ class LA66Radio:
             elif buf:  # timeout with partial line: process it anyway
                 self._handle_line(buf.decode("ascii", "replace"))
                 buf = b""
+            elif (self._reopen and self.port.startswith("/dev/")
+                  and time.monotonic() - getattr(self, "_seen_at", 0) > 2.0):
+                self._seen_at = time.monotonic()     # some drivers just go quiet when unplugged
+                if not os.path.exists(self.port):
+                    self._lost(OSError(f"{self.port} disappeared"))
             self._check_deadline()
 
     def _handle_line(self, line: str) -> None:
@@ -365,7 +467,11 @@ class LA66Radio:
         while self._running:
             # control commands (AT+RECV) take priority
             try:
-                self._write(self._ctrlq.get_nowait())
+                cmd = self._ctrlq.get_nowait()
+                try:
+                    self._write(cmd)
+                except OSError:
+                    pass
                 time.sleep(0.05)
                 continue
             except queue.Empty:
@@ -377,6 +483,10 @@ class LA66Radio:
                     continue
                 ready_at = (time.monotonic() + self.limiter.wait_time()
                             + random.uniform(0, self.p.backoff_max_s))
+            if not self.plugged:                 # unplugged: this frame fails (see _fail_queued)
+                self.on_tx(TxResult(job[0], False, 0.0, "radio unplugged"))
+                job = None
+                continue
             if time.monotonic() < ready_at or self._paused.is_set():
                 time.sleep(0.05)
                 continue
@@ -412,8 +522,13 @@ class LA66Radio:
         self._rx_on.clear()
         self._tx_busy = True
         try:
-            self._write(cmd)
-            ok = self._tx_done.wait(timeout)
+            try:
+                self._write(cmd)
+                ok = self._tx_done.wait(timeout) and self.plugged
+            except Exception as e:           # unplugged while sending
+                ok = False
+                if self._reopen:
+                    self._lost(e)
             if ok:
                 self._rx_on.wait(1.0)
         finally:

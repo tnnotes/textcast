@@ -18,14 +18,7 @@ const t = v.t;
 const hx = (o, k) => Bytes.unhex(o[k]);
 const H = (b) => Bytes.hex(b);
 
-class MemoryStore {
-  constructor() { this.m = new Map(); }
-  get(n) { return this.m.has(n) ? this.m.get(n) : null; }
-  put(n, b) { this.m.set(n, Uint8Array.from(b)); }
-  remove(n) { this.m.delete(n); }
-  list() { return [...this.m.keys()]; }
-}
-module.exports.MemoryStore = MemoryStore;
+const { MemoryStore } = require("./helpers.js");
 
 const la66 = () => { const hw = Hardware.load(null); Protocol.setHardwareLimits(hw.maxPayload, hw.firmwareOverhead); };
 
@@ -194,6 +187,43 @@ test("keyring interop with Python", () => {
   fs.writeFileSync(path.join(out, "kotlin.json"), JSON.stringify(res, null, 1));
   fs.writeFileSync(path.join(out, "keys-Minh.lkey"), st2.get("keys-Minh.lkey"));
   fs.writeFileSync(path.join(out, "keys-Lan.json"), kr.lan_json);
+});
+
+test("direct messages with Python", () => {
+  la66();
+  Protocol.applyProfile(Settings.buildProfile({ region: "AS923-2" }));
+  const d = v.direct;
+  const st = new MemoryStore();
+  st.put("keys-Tuan.json", Bytes.utf8(d.tuan_json));
+  st.put("keys-Lan.json", Bytes.utf8(d.lan_json));
+  const tuan = new Keyring(st, "keys-Tuan.json", "Tuan");
+  const lan = new Keyring(st, "keys-Lan.json", "Lan");
+  const seed = Bytes.unb32(JSON.parse(d.tuan_json).id_seed);
+  assert.equal(H(Ed25519.sharedPoint(seed, lan.pub)), d.shared);
+  for (const bad of d.bad_keys) assert.equal(Ed25519.sharedPoint(seed, Bytes.unhex(bad)), null);
+  for (const k of ["text", "resend", "receipt"]) {
+    const o = tuan.open(Bytes.unhex(d.frames[k]), d.t);
+    const e = d.expected[k];
+    assert.ok(o, k);
+    assert.deepEqual([o.kind, o.source, o.sender, o.text, o.inner, o.acks, o.counter],
+                     [e.kind, e.source, e.sender, e.text, e.inner, e.acks, e.counter], k);
+  }
+  assert.equal(tuan.open(Bytes.unhex(d.frames.text), d.t), null, "replay refused");
+  // the other way: Tuan (JS) to Lan (JS, from Python's file)
+  const [frame] = tuan.sealDirect(lan.handle, "trả lời từ web");
+  const o = lan.open(frame);
+  assert.equal(o.text, "trả lời từ web");
+  assert.equal(o.inner, "text");
+  const out = process.env.TEXTCAST_COMPAT_OUT;
+  if (out) {
+    const st3 = new MemoryStore(); st3.put("keys-Tuan.json", Bytes.utf8(d.tuan_json));
+    const t3 = new Keyring(st3, "keys-Tuan.json", "Tuan");
+    const res = JSON.parse(fs.readFileSync(path.join(out, "kotlin.json"), "utf8"));
+    res.direct_text = H(t3.sealDirect(lan.handle, "từ trình duyệt")[0]);
+    res.direct_receipt = H(t3.makeReceipt(lan.handle, [77, 4294967296 + 5]));
+    fs.writeFileSync(path.join(out, "kotlin.json"), JSON.stringify(res, null, 1));
+    fs.writeFileSync(path.join(out, "keys-Lan-direct.json"), d.lan_json);
+  }
 });
 
 test("vault and log cipher", () => {

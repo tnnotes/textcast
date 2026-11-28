@@ -1,13 +1,14 @@
-# TextCast — Air Specification v0.4 (draft)
+# TextCast — Air Specification v0.7 (draft)
 
 A decentralized, CB-style text broadcast network. Everyone shares one LoRa
 channel, everyone receives everything, and all meaning (filtering, identity,
 encryption) is decided by the end applications. The network defines only
 **how to share the air**.
 
-Two implementations follow this specification: the Python core (`lora_text/`)
-and the Kotlin core of the Android app (`android/…/core/`). Cross-language test
-vectors in `android/compat/` keep them byte-compatible.
+Three implementations follow this specification: the Python core
+(`lora_text/`), the Kotlin core of the Android app (`android/…/core/`) and the
+JavaScript core of the web app (`web/src/`). Cross-language test vectors in
+`android/compat/` keep them byte-compatible.
 
 ## 1. Air profile (mandatory, identical on every node)
 
@@ -111,6 +112,34 @@ frame under the group control keys `ctrl_enc/ctrl_mac = HMAC-SHA256(group_secret
 accept it if fresh (±10 min), the nonce is unseen and the handle's TAG matches
 `pub`; a known handle announcing a different key is rejected.
 
+**Direct (one-to-one) messages (v0.7).** Two people who hold each other's
+identity string (`lid1:`) derive a pair secret with Diffie–Hellman on their
+Ed25519 identity keys, on the Edwards curve itself (no separate key type):
+```
+S      = compress(a_me · A_peer)            a = clamped secret scalar of the identity seed
+                                            refused: A_peer not a point, or S the neutral point
+pair   = HMAC-SHA256(S, "lora-text/pair/" + h1 + "|" + h2)[:16]
+                                            h1, h2 = both handles, lower case, sorted
+secret = HMAC-SHA256(pair, "lora-text/member/" + lower(sender handle))[:16]
+```
+One `secret` per direction, used exactly like a group member's stream: an
+ordinary SEALED frame (version 1, hint byte, 5-byte tag), so on air a direct
+message looks like any other sealed packet. Counters are kept per contact
+(`dm_out`, `dm_in`). The decrypted body starts with a type byte:
+
+| byte | meaning | rest |
+|---|---|---|
+| `0x01` | message | UTF-8 text (max payload − 8 bytes) |
+| `0x02` | message sent again | the same text; a receiver that showed it in the last 30 min doesn't show it twice |
+| `0x03` | receipt | 1–4 ids, 4 bytes each (big-endian): `id = i & 0xFFFFFFFF` of the confirmed messages |
+
+**Receipts.** A receiver that decodes a message (`0x01`/`0x02`) sends a receipt
+1–4 s later (random; ids that arrive meanwhile share one receipt). Receipts are
+never confirmed. The sender shows *sent* → *delivered* when a receipt names the
+message's id, or *not confirmed* after 30 s; resending (`0x02`) uses a new
+counter and either copy's receipt counts. Receipts reveal to the other person
+(only) that the receiving device was in range and unlocked.
+
 **Verification shown to users.** ✓ only for posts on a followed stream whose
 `lts3` string carried a valid owner signature; such posts may show the
 user's contact name for that key. Group messages are shown as `handle ◆`
@@ -145,10 +174,49 @@ probability ≈ candidates/2⁴⁰ (≈ 10⁻¹¹), i.e. ≈ 2·10⁻⁹ per pac
 holding 250 streams, before the UTF-8 check; the channel carries about one
 packet per second. Trial decryption costs ≈ 25 µs per stream per packet.
 
+Direct messages are authenticated: only the two key holders can compute the
+pair secret, so a direct message is shown with the contact's own name.
+
 **Known limits.** Group members can impersonate each other (shared group
 secret; hence the ◆ badge instead of ✓). Followers of a stream could forge that stream's posts. Fixing this
 needs asymmetric signatures or TESLA-style delayed keys (future). Radio
 direction-finding can still locate transmitters.
+
+## 5a. TextCast numbers and number lookup (v0.7)
+
+A **TextCast number** is a 10-digit name for an identity key, computed (no server):
+
+    d      = scrypt(pub, salt = "textcast/number/v1", N = 2^14, r = 8, p = 1, 8 bytes)
+    body   = 100000000 + (d as big-endian integer) mod 900000000     (9 digits)
+    number = body ‖ Luhn check digit of body                         (10 digits)
+
+Shown as `512 384 9076`. Typing accepts spaces, `-`, `.`, `()`; a number with
+a leading 0 or a wrong check digit is refused before anything is sent.
+
+**Frames** (mode byte: version 1, type DIRECTORY = 3, i.e. `0x58`; no
+encryption, no MAC - the answer is a public key, which is public):
+
+| frame | bytes | content |
+|---|---|---|
+| lookup | 7 | `0x58` `'Q'` number (5 bytes, big-endian integer) |
+| answer | 4 + chunk | `0x58` `'A'` answer-id (random byte) `part<<4 ‖ parts` chunk |
+
+The answer's chunks, in part order, are `pub (32) ‖ nick (UTF-8)`. Each answer
+frame is at most the profile's payload limit, so the answer takes one frame at
+SF7/SF8 and two or three at SF10 (23 bytes). Rules:
+
+- Answer a lookup only for your own number, only if "find me by number" is on
+  (default), after a random 0.3-1.5 s, at most once per 3 s.
+- The asker sends the lookup, again after 4 s if nobody answered, and gives up
+  after 10 s ("not found"). It accepts an answer only if `number(pub)` equals
+  the number it asked for. Two different keys for one number = **conflict**:
+  nothing is saved and the user is warned.
+- A contact saved from an answer is marked "added by number"; one saved from an
+  identity string (`lid1:`, QR) is "verified". Saving a key whose number another
+  saved contact already has is refused.
+- Lookup and answer frames are logged as kind `lookup` and never shown as messages.
+
+Old apps see these frames as `[N B sealed]` in *Other*.
 
 ## 5b. Local storage (not on air)
 

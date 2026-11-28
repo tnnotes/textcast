@@ -10,8 +10,8 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
-:root{--onacc:#fff;--bg:#f6f7f8;--card:#fff;--fg:#1d2328;--mut:#69737d;--line:#e2e6ea;--acc:#127a6a;--acc2:#e6f3f1;--err:#b3261e;--warn:#9a6700;--me:#eef6ff;--priv:#7b4bb7}
-@media (prefers-color-scheme:dark){:root{--onacc:#06201b;--bg:#121518;--card:#1b2024;--fg:#e8ecef;--mut:#99a3ad;--line:#2b3238;--acc:#5ccbb7;--acc2:#16302c;--err:#ff8a80;--warn:#e3b341;--me:#17283a;--priv:#c3a0f0}}
+:root{--onacc:#fff;--bg:#f2f4f5;--card:#fff;--fg:#1d2328;--mut:#69737d;--line:#e2e6ea;--acc:#127a6a;--acc2:#e6f3f1;--err:#b3261e;--warn:#9a6700;--me:#d9f2ec;--them:#fff;--priv:#7b4bb7;--wall:#eceff1}
+@media (prefers-color-scheme:dark){:root{--onacc:#06201b;--bg:#121518;--card:#1b2024;--fg:#e8ecef;--mut:#99a3ad;--line:#2b3238;--acc:#5ccbb7;--acc2:#16302c;--err:#ff8a80;--warn:#e3b341;--me:#1d4a42;--them:#232a2f;--priv:#c3a0f0;--wall:#0e1113}}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -22,7 +22,7 @@ button{cursor:pointer;border-radius:20px;padding:8px 16px;border:1px solid var(-
 button.ghost{background:transparent;color:var(--acc)}
 button.danger{background:transparent;color:var(--err);border-color:var(--err)}
 button:disabled{opacity:.5;cursor:default}
-.icon{background:transparent;border:none;color:var(--fg);padding:6px 9px;border-radius:8px;font-size:15px}
+.icon{background:transparent;border:none;color:var(--fg);padding:6px 10px;border-radius:20px;font-size:18px;line-height:1}
 .icon:hover{background:var(--acc2)}
 .hide{display:none!important}
 .mut{color:var(--mut)}.err{color:var(--err)}.ok{color:var(--acc)}.warn{color:var(--warn)}
@@ -42,51 +42,109 @@ label.f{display:block;margin:10px 0 4px;font-size:13px;color:var(--mut)}
 .note{background:var(--acc2);border-radius:10px;padding:10px 12px;font-size:13px;margin:10px 0}
 .note.bad{background:transparent;border:1px solid var(--err);color:var(--err)}
 
-/* chat screen */
-#chat{display:flex;flex-direction:column;height:100%}
-header{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--card);border-bottom:1px solid var(--line)}
-header .who{flex:1;min-width:0}
+/* home: chat list + conversation (two panes on a wide screen, one at a time on a phone) */
+#home{display:flex;height:100%}
+#list{width:360px;min-width:300px;display:flex;flex-direction:column;background:var(--card);border-right:1px solid var(--line);position:relative}
+#conv{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--wall)}
+header{display:flex;align-items:center;gap:6px;padding:8px 10px;min-height:56px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{flex:1;font-size:19px;margin:0 6px}
+header .who{flex:1;min-width:0;cursor:pointer}
 header .who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-header .who span{font-size:12px;color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#chips{display:flex;gap:6px;padding:8px 10px;overflow-x:auto;background:var(--card);border-bottom:1px solid var(--line);scrollbar-width:none}
-.chip{white-space:nowrap;border:1px solid var(--line);background:transparent;color:var(--fg);padding:4px 12px;border-radius:16px;font-size:13px}
-.chip.on{background:var(--acc);border-color:var(--acc);color:var(--onacc)}
-#feed{flex:1;overflow-y:auto;padding:6px 0}
-.m{padding:5px 12px;border-bottom:1px solid var(--line)}
-.m.tx{background:var(--me)}
-.m .meta{font-size:11.5px;color:var(--mut)}
-.m .who{font-weight:600}
-.m .txt{white-space:pre-wrap;word-break:break-word}
-.m.dim .txt{color:var(--mut);font-style:italic}
-.m .lock{color:var(--priv)}
-.sys{padding:6px 12px;font-size:12.5px;color:var(--mut);text-align:center}
+header .who span{font-size:12.5px;color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#radio{display:flex;align-items:center;gap:8px;padding:7px 14px;font-size:13px;border-bottom:1px solid var(--line);color:var(--mut)}
+#radio .dot{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
+#radio.on .dot{background:var(--acc)}
+#radio.off{background:#fff4e0;color:#6b4a00}
+@media (prefers-color-scheme:dark){#radio.off{background:#3a2c0c;color:#f3d48a}}
+#radio.off .dot{background:var(--warn)}
+#radio span{flex:1}
+#radio button{padding:3px 12px;font-size:13px}
+#chatList{flex:1;overflow-y:auto}
+.ci{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--line)}
+.ci:hover{background:var(--bg)}
+.ci.on{background:var(--acc2)}
+.av{width:44px;height:44px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:18px;color:#fff;background:#7d8b96}
+.av.big{width:72px;height:72px;font-size:30px;margin:4px auto 8px}
+.ci .mid{flex:1;min-width:0}
+.ci .l1{display:flex;gap:8px;align-items:baseline}
+.ci .l1 b{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.ci .l1 small{color:var(--mut);font-size:12px}
+.ci .l2{display:flex;gap:8px;align-items:center;color:var(--mut);font-size:13.5px}
+.ci .l2 span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{background:var(--acc);color:var(--onacc);border-radius:12px;min-width:20px;padding:1px 7px;font-size:12px;font-weight:600;text-align:center}
+.ci.unread .l1 small{color:var(--acc);font-weight:600}
+.listnote{padding:18px;color:var(--mut);font-size:13.5px;text-align:center}
+.fab{position:absolute;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:18px;font-size:28px;padding:0;box-shadow:0 3px 10px #0003}
+#feed{flex:1;overflow-y:auto;padding:10px 4%}
+.b{max-width:78%;margin:3px 0;padding:6px 10px 4px;border-radius:12px;background:var(--them);box-shadow:0 1px 1px #0001;width:fit-content;cursor:default;word-break:break-word}
+.b.tx{margin-left:auto;background:var(--me)}
+.b .nm{font-size:12.5px;font-weight:600;color:var(--acc);margin-bottom:1px}
+.b .t{white-space:pre-wrap}
+.b .ft{font-size:11.5px;color:var(--mut);text-align:right;margin-top:1px;white-space:nowrap}
+.b .ft .ok{font-weight:600}
+.b .det{font-size:11.5px;color:var(--mut);margin-top:2px}
+.b.dim .t{color:var(--mut);font-style:italic}
+.b a.resend{font-weight:600}
+.day{text-align:center;margin:10px 0}
+.day span,.sys span{background:var(--card);color:var(--mut);font-size:12px;padding:3px 10px;border-radius:10px;box-shadow:0 1px 1px #0001}
+.sys{text-align:center;margin:8px 0}
+.sys.err span{color:var(--err)}
+.intro{max-width:420px;margin:14px auto;background:#fff8d6;color:#5b4a00;border-radius:10px;padding:10px 14px;font-size:13px;text-align:center}
+@media (prefers-color-scheme:dark){.intro{background:#3a330f;color:#efe2a2}}
 #bar{background:var(--card);border-top:1px solid var(--line);padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
-#bar .top{display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:12.5px;color:var(--mut)}
-#bar .top select{padding:3px 6px;font-size:13px}
-#bar .send{display:flex;gap:8px}
-#text{flex:1;resize:none;height:42px;max-height:120px}
+#bar .send{display:flex;gap:8px;align-items:flex-end}
+#text{flex:1;resize:none;height:42px;max-height:120px;border-radius:21px;padding:10px 14px}
+#bSend{width:44px;height:42px;padding:0;font-size:18px;border-radius:50%}
+#barInfo{font-size:12px;color:var(--mut);margin:0 6px 4px;display:flex;gap:10px}
+#barInfo:empty{display:none}
 #count.over{color:var(--err);font-weight:600}
+#readOnly{padding:12px;text-align:center;color:var(--mut);font-size:13px;background:var(--card);border-top:1px solid var(--line)}
+#noConv{flex:1;display:flex;align-items:center;justify-content:center;color:var(--mut);text-align:center;padding:20px}
 #lockbar,#backupbar{background:var(--acc2);padding:8px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13.5px}
-#backupbar span{flex:1;min-width:200px}
-#backupbar button{padding:5px 12px}
+#backupbar span{flex:1;min-width:180px}
+#backupbar button,#lockbar button{padding:5px 12px}
+#lockbar input{flex:1;min-width:120px}
+#bBack{display:none}
+@media (max-width:759px){
+  #list{width:100%;border-right:none}
+  #conv{display:none}
+  body.open #list{display:none}
+  body.open #conv{display:flex}
+  #bBack{display:inline-block}
+  #noConv{display:none!important}
+}
 
-dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--fg);padding:0;width:min(560px,94vw);max-height:88vh}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--fg);padding:0;width:min(520px,94vw);max-height:88vh}
 dialog::backdrop{background:#0007}
-dialog .hd{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+dialog .hd{display:flex;align-items:center;padding:10px 12px 10px 16px;border-bottom:1px solid var(--line)}
 dialog .hd h2{flex:1;margin:0;font-size:16px}
-dialog .bd{padding:12px 16px;overflow-y:auto;max-height:calc(88vh - 56px)}
+dialog .bd{padding:12px 16px 16px;overflow-y:auto;max-height:calc(88vh - 56px)}
+dialog h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:18px 0 6px}
 .share{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;margin:6px 0}
-.krow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
+.krow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
 .krow .k{flex:1;min-width:0}
 .krow .k small{display:block;color:var(--mut)}
+.krow.link{cursor:pointer}
+.krow.link::after{content:"›";color:var(--mut);font-size:20px}
+.num{font-size:24px;font-weight:600;letter-spacing:.04em;text-align:center;margin:2px 0}
+.center{text-align:center}
+.found{background:var(--acc2);border-radius:12px;padding:12px;margin:10px 0}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--acc);border-right-color:transparent;border-radius:50%;animation:sp 1s linear infinite;vertical-align:-1px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.addrow{display:flex;gap:8px}
+.addrow input{flex:1;min-width:0}
+details summary{cursor:pointer;color:var(--acc);font-size:14px;padding:8px 0}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
 .grid label{font-size:13px;color:var(--mut)}
 .grid input,.grid select{width:100%}
 @media (max-width:420px){.grid{grid-template-columns:1fr}}
+.logrow{font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line)}
+.logrow .mut{font-size:11.5px}
 </style>
 </head>
 <body>
 
+<!-- ================= start ================= -->
 <!-- ================= start ================= -->
 <div id="start">
   <h1>📡 TextCast</h1>
@@ -116,7 +174,7 @@ dialog .bd{padding:12px 16px;overflow-y:auto;max-height:calc(88vh - 56px)}
 
   <div class="row2">
     <button id="go">Start</button>
-    <button id="goOffline" class="ghost">Open without radio</button>
+    <button id="goOffline" class="ghost">Start without radio</button>
   </div>
   <p class="small mut" id="radioLine" style="margin-top:14px">Radio: <span id="radioSummary"></span> · <a href="#" id="optToggle">more options</a></p>
 
@@ -139,62 +197,150 @@ dialog .bd{padding:12px 16px;overflow-y:auto;max-height:calc(88vh - 56px)}
     <div class="row2"><button id="impGo">Import</button><button class="ghost" id="impCancel">Cancel</button></div>
     <p class="small mut">Move, don't clone: stop using the identity on the other device.</p>
   </div>
-  <p class="small mut" style="margin-top:28px">Plug the LoRa USB stick in, press Start and pick it from the list (only the first time). Your identity and messages stay in this browser; private messages are end-to-end encrypted.</p>
+  <p class="small mut" style="margin-top:28px">Plug the LoRa USB stick in, press Start and pick it from the list (only the first time). No stick yet? Start anyway and plug it in later. Your identity and messages stay in this browser; private messages are end-to-end encrypted.</p>
 </div>
 
-<!-- ================= chat ================= -->
-<div id="chat" class="hide">
-  <header>
-    <div class="who"><b id="hHandle">TextCast</b><span id="hStatus"></span></div>
-    <button class="icon" id="bReconnect" title="Connect the radio">🔌</button>
-    <button class="icon" id="bKeys" title="Groups, streams and contacts">👥</button>
-    <button class="icon" id="bRadio" title="Radio settings">📶</button>
-    <button class="icon" id="bLock" title="Lock">🔒</button>
-    <button class="icon" id="bMenu" title="More">⋯</button>
-  </header>
-  <div id="lockbar" class="hide">
-    <span>🔒 Locked. Private messages are kept until you unlock.</span>
-    <input id="unlockPass" type="password" placeholder="Passphrase" autocomplete="current-password">
-    <button id="bUnlock">Unlock</button>
-    <span id="unlockMsg" class="small err"></span>
-  </div>
-  <div id="backupbar" class="hide">
-    <span>💾 Back up your identity so you can't lose it (clearing site data deletes it).</span>
-    <button id="bBackup">Back up now</button><button class="ghost" id="bBackupLater">Later</button>
-  </div>
-  <div id="chips"></div>
-  <div id="feed"></div>
-  <div id="bar">
-    <div class="top">
-      <span>to</span><select id="sendTo"></select>
-      <span id="count"></span>
-      <span id="barMsg" class="err"></span>
+<!-- ================= home: chat list + conversation ================= -->
+<div id="home" class="hide">
+  <aside id="list">
+    <header>
+      <h1>TextCast</h1>
+      <button class="icon" id="bSettings" title="Settings">⚙</button>
+    </header>
+    <div id="radio"><i class="dot"></i><span id="hStatus"></span><button id="bReconnect" class="ghost hide">Connect</button></div>
+    <div id="lockbar" class="hide">
+      <span>🔒 Locked<span id="lockCount"></span></span>
+      <input id="unlockPass" type="password" placeholder="Passphrase" autocomplete="current-password">
+      <button id="bUnlock">Unlock</button>
+      <span id="unlockMsg" class="small err"></span>
     </div>
-    <div class="send">
-      <textarea id="text" placeholder="Message" rows="1" enterkeyhint="send"></textarea>
-      <button id="bSend">Send</button>
+    <div id="backupbar" class="hide">
+      <span>💾 Back up your identity so you can't lose it.</span>
+      <button id="bBackup">Back up</button><button class="ghost" id="bBackupLater">Later</button>
     </div>
-  </div>
+    <div id="chatList"></div>
+    <button class="fab" id="bNew" title="New chat">＋</button>
+  </aside>
+
+  <section id="conv">
+    <div id="noConv">Pick a chat on the left,<br>or press ＋ to add a person.</div>
+    <header id="convHead">
+      <button class="icon" id="bBack" title="Back">←</button>
+      <div class="av" id="cAv"></div>
+      <div class="who" id="cWho"><b id="cTitle"></b><span id="cSub"></span></div>
+      <button class="icon" id="bInfo" title="Info">ⓘ</button>
+    </header>
+    <div id="feed"></div>
+    <div id="readOnly" class="hide">Only the owner of this channel can post.</div>
+    <div id="bar">
+      <div id="barInfo"><span id="count"></span><span id="barMsg" class="err"></span></div>
+      <div class="send">
+        <textarea id="text" placeholder="Message" rows="1" enterkeyhint="send"></textarea>
+        <button id="bSend" title="Send">➤</button>
+      </div>
+    </div>
+  </section>
 </div>
 
 <!-- ================= dialogs ================= -->
-<dialog id="dKeys">
-  <div class="hd"><h2>Groups, streams and contacts</h2><button class="icon" data-close>✕</button></div>
+<dialog id="dNew">
+  <div class="hd"><h2>New chat</h2><button class="icon" data-close>✕</button></div>
   <div class="bd">
-    <p class="small mut" style="margin-top:0">Your identity string. Give it to people so they recognise you:</p>
-    <div class="share" id="myLid"></div>
-    <p class="small mut">Fingerprint <b id="myFp"></b> · compare it in person</p>
-    <div class="row2" style="margin-top:6px"><button class="ghost" id="copyLid">Copy</button></div>
-    <h3 style="font-size:14px;margin:18px 0 4px">Add or create</h3>
-    <input id="kVal" class="wide" placeholder="Paste a ltg2: / lts3: / lid1: string, or type a new name" autocomplete="off">
-    <div class="row2">
-      <button id="kAdd">Add pasted string</button>
-      <button class="ghost" id="kNewGroup">New group</button>
-      <button class="ghost" id="kNewStream">New stream</button>
+    <label class="f" for="addNum" style="margin-top:0">Their TextCast number</label>
+    <div class="addrow">
+      <input id="addNum" inputmode="tel" autocomplete="off" placeholder="e.g. 512 384 9076" maxlength="16">
+      <button id="addFind">Find</button>
     </div>
+    <div id="addStatus" class="small" style="margin-top:8px"></div>
+    <div id="addFound" class="found hide">
+      <div>Found <b id="addNick"></b> nearby.</div>
+      <label class="f" for="addName">Save as</label>
+      <input id="addName" class="wide" maxlength="32" autocomplete="off">
+      <div class="row2"><button id="addGo">Add and chat</button></div>
+      <p class="small mut" style="margin-bottom:0">Not sure it's really them? Ask them to read their number to you, or add them with their identity string.</p>
+    </div>
+    <h3>More</h3>
+    <details id="pasteBox">
+      <summary>Paste an identity string or a group invite</summary>
+      <input id="kVal" class="wide" placeholder="lid1:… or ltg2:… or lts3:…" autocomplete="off">
+      <div class="row2"><button id="kAdd">Add</button></div>
+    </details>
+    <details id="groupBox">
+      <summary>New group</summary>
+      <input id="gName" class="wide" placeholder="Group name, e.g. family" autocomplete="off" maxlength="24">
+      <div class="row2"><button id="kNewGroup">Create group</button></div>
+    </details>
     <div id="kMsg"></div>
-    <div id="kList"></div>
   </div>
+</dialog>
+
+<dialog id="dInfo">
+  <div class="hd"><h2 id="iTitle">Info</h2><button class="icon" data-close>✕</button></div>
+  <div class="bd" id="iBody"></div>
+</dialog>
+
+<dialog id="dSettings">
+  <div class="hd"><h2>Settings</h2><button class="icon" data-close>✕</button></div>
+  <div class="bd">
+    <div class="center">
+      <div class="av big" id="sAv"></div>
+      <b id="hHandle"></b>
+      <div class="small mut" style="margin-top:8px">Your TextCast number</div>
+      <div class="num" id="myNumber"></div>
+      <div class="row2" style="justify-content:center;margin-top:6px"><button class="ghost" id="copyNum">Copy number</button></div>
+      <p class="small mut">People nearby can add you with this number.</p>
+    </div>
+    <details>
+      <summary>My identity string (to add me without the radio)</summary>
+      <div class="share" id="myLid"></div>
+      <p class="small mut">Fingerprint <b id="myFp"></b></p>
+      <button class="ghost" id="copyLid">Copy</button>
+    </details>
+    <h3>Privacy</h3>
+    <div class="krow"><div class="k">Let people find me by my number<small>Your device answers when someone nearby looks up your number.</small></div><input type="checkbox" id="sFind"></div>
+    <div class="krow" id="lockRow"><div class="k">Lock now<small>Hides private messages until you type your passphrase.</small></div><button class="ghost" id="bLock">Lock</button></div>
+    <h3>Notifications</h3>
+    <div class="krow"><div class="k">Notify me about new messages<small>When TextCast is in the background.</small></div><input type="checkbox" id="mNotify"></div>
+    <div class="krow"><div class="k">Sound<small>A short beep for a new message in the background.</small></div><input type="checkbox" id="mSound"></div>
+    <h3>Identity</h3>
+    <div class="krow"><div class="k">Back up my identity<small>An encrypted file to keep, or to move to another device.</small></div><button class="ghost" id="mExport">Back up</button></div>
+    <div id="exportBox" class="hide">
+      <label class="f">Passphrase for the file (8+ characters)</label><input id="ePass" type="password" class="wide" autocomplete="new-password">
+      <label class="f">Again</label><input id="ePass2" type="password" class="wide" autocomplete="new-password">
+      <div class="row2"><button id="eGo">Download .ltid</button></div>
+      <p class="small mut">Move, don't clone: stop using the identity here once it runs elsewhere.</p>
+    </div>
+    <div class="krow"><div class="k">Log out<small>Disconnects the radio. Your identity stays in this browser.</small></div><button class="ghost" id="mLogout">Log out</button></div>
+    <div class="krow link" id="bAdvanced"><div class="k">Advanced<small>Radio settings, radio log, channels</small></div></div>
+    <p id="mMsg" class="small"></p>
+  </div>
+</dialog>
+
+<dialog id="dAdvanced">
+  <div class="hd"><h2>Advanced</h2><button class="icon" data-close>✕</button></div>
+  <div class="bd">
+    <div class="krow link" id="bRadio"><div class="k">Radio settings<small id="aRadio"></small></div></div>
+    <div class="krow link" id="bLog"><div class="k">Radio log<small>Every packet heard, with signal strength</small></div></div>
+    <div class="krow"><div class="k">Show my name with its tag in public<small>"Lan#K7QX" instead of "Lan", so people can tell two Lans apart.</small></div><input type="checkbox" id="mTag"></div>
+    <div class="krow"><div class="k">Radio details<small id="mFw"></small></div></div>
+    <h3>Groups and channels</h3>
+    <div id="kList"></div>
+    <details>
+      <summary>New broadcast channel</summary>
+      <p class="small mut" style="margin-top:0">Only you post; anyone with its string reads (and knows it's you).</p>
+      <input id="sName" class="wide" placeholder="Channel name" autocomplete="off" maxlength="24">
+      <div class="row2"><button id="kNewStream">Create channel</button></div>
+    </details>
+    <div id="aMsg"></div>
+    <h3>History</h3>
+    <div class="krow"><div class="k">Clear message history<small>Removes the messages stored in this browser for this identity.</small></div><button class="danger" id="mClear">Clear</button></div>
+    <p class="small mut" style="margin-top:16px">TextCast web 0.7.0 (856877fc41) · same protocol as the desktop and Android apps.<br><span id="mInstall"></span></p>
+  </div>
+</dialog>
+
+<dialog id="dLog">
+  <div class="hd"><h2>Radio log</h2><button class="icon" data-close>✕</button></div>
+  <div class="bd" id="logBody"></div>
 </dialog>
 
 <dialog id="dRadio">
@@ -216,27 +362,6 @@ dialog .bd{padding:12px 16px;overflow-y:auto;max-height:calc(88vh - 56px)}
     <p class="small" id="rPreview"></p>
     <div class="row2"><button id="rApply">Apply</button><button class="ghost" id="rDefaults">Region defaults</button></div>
     <p class="small" id="rMsg"></p>
-  </div>
-</dialog>
-
-<dialog id="dMenu">
-  <div class="hd"><h2>TextCast</h2><button class="icon" data-close>✕</button></div>
-  <div class="bd">
-    <div class="krow"><div class="k">Export identity<small>An encrypted .ltid file to move this identity to the desktop or Android app, or another browser.</small></div><button class="ghost" id="mExport">Export</button></div>
-    <div class="krow"><div class="k">Show my nick with its tag in public<small>"Lan#K7QX" instead of "Lan", so people can tell two Lans apart.</small></div><input type="checkbox" id="mTag"></div>
-    <div class="krow"><div class="k">Notify me about new messages<small>A notification when TextCast is in the background.</small></div><input type="checkbox" id="mNotify"></div>
-    <div class="krow"><div class="k">Sound<small>A short beep when a message arrives in the background.</small></div><input type="checkbox" id="mSound"></div>
-    <div class="krow"><div class="k">Radio details<small id="mFw"></small></div></div>
-    <div class="krow"><div class="k">Clear message history<small>Removes the messages stored in this browser for this identity.</small></div><button class="danger" id="mClear">Clear</button></div>
-    <div class="krow"><div class="k">Log out<small>Disconnects the radio. Your identity stays in this browser.</small></div><button class="ghost" id="mLogout">Log out</button></div>
-    <div id="exportBox" class="hide">
-      <label class="f">Passphrase for the file (8+ characters)</label><input id="ePass" type="password" class="wide" autocomplete="new-password">
-      <label class="f">Again</label><input id="ePass2" type="password" class="wide" autocomplete="new-password">
-      <div class="row2"><button id="eGo">Download .ltid</button></div>
-      <p class="small mut">Move, don't clone: stop using the identity here once it runs elsewhere.</p>
-    </div>
-    <p id="mMsg" class="small"></p>
-    <p class="small mut" style="margin-top:16px">TextCast web 0.6.0 (a5930aea78) · same protocol as the desktop and Android apps.<br><span id="mInstall"></span></p>
   </div>
 </dialog>
 
@@ -696,6 +821,15 @@ const Ed25519 = (() => {
   const hq = (...parts) => mod(leToInt(Bytes.sha512(Bytes.concat(...parts))), Q);
 
   const publicKey = (seed) => compress(mul(expand(seed)[0], G));
+  // Diffie-Hellman with the identity keys themselves: a_me * A_peer == a_peer * A_me.
+  // null for a key that is not a point or gives the neutral point (small order).
+  function sharedPoint(seed, peerPub) {
+    const A = decompress(peerPub);
+    if (!A) return null;
+    const S = mul(expand(seed)[0], A);
+    if (equalPt(S, [0n, 1n, 1n, 0n])) return null;
+    return compress(S);
+  }
   function sign(seed, msg) {
     const [a, prefix] = expand(seed);
     const pub = compress(mul(a, G));
@@ -713,7 +847,7 @@ const Ed25519 = (() => {
     if (s >= Q) return false;
     return equalPt(mul(s, G), add(R, mul(hq(Rb, pub, msg), A)));
   }
-  return { publicKey, sign, verify };
+  return { publicKey, sign, verify, sharedPoint };
 })();
 
 // scrypt (RFC 7914). n = 2^15, r = 8 needs 32 MiB and takes about a second in a browser.
@@ -1271,11 +1405,86 @@ const Ids = (() => {
   return { checkNick, fingerprint, tagOf, makeHandle, handleTag, parseLid };
 })();
 
+// TextCast numbers (port of numbers.py): a 10-digit name computed from the key,
+//   scrypt(pub, "textcast/number/v1", 2^14, 8, 1, 8 B) -> 9 digits + Luhn check digit.
+// Lookup frames (type DIRECTORY = 3, version 1):
+//   lookup [mode]['Q'][number 5 B]   answer [mode]['A'][id][part<<4|parts][chunk of pub‖nick]
+class NumberException extends Error {}
+const Numbers = (() => {
+  const SALT = Bytes.utf8("textcast/number/v1");
+  const DIRECTORY = 3, OP_LOOKUP = 0x51, OP_ANSWER = 0x41, HEAD = 4;
+  const cache = new Map();
+  function luhn(digits) {
+    let total = 0;
+    for (let k = 0; k < digits.length; k++) {
+      let d = digits.charCodeAt(digits.length - 1 - k) - 48;
+      if (k % 2 === 0) { d *= 2; if (d > 9) d -= 9; }
+      total += d;
+    }
+    return (10 - (total % 10)) % 10;
+  }
+  function numberOf(pub) {
+    const key = Bytes.hex(pub);
+    if (cache.has(key)) return cache.get(key);
+    const d = Scrypt.derive(pub, SALT, 1 << 14, 8, 1, 8);
+    let v = 0n;
+    for (const b of d) v = (v << 8n) | BigInt(b);
+    const body = String(100000000n + (v % 900000000n));
+    const n = body + luhn(body);
+    cache.set(key, n);
+    return n;
+  }
+  const format = (n) => (n && n.length === 10 ? `${n.slice(0, 3)} ${n.slice(3, 6)} ${n.slice(6)}` : n);
+  function parse(s) {
+    const n = String(s || "").replace(/[\s.\-()+]/g, "");
+    if (!/^\d{10}$/.test(n)) throw new NumberException("a TextCast number has 10 digits");
+    if (n[0] === "0" || luhn(n.slice(0, 9)) !== n.charCodeAt(9) - 48)
+      throw new NumberException("that number has a typo (check digit does not match)");
+    return n;
+  }
+  const mode = () => Protocol.makeMode(DIRECTORY, 0, 1);
+  function makeLookup(n) {
+    let v = BigInt(n);
+    const out = new Uint8Array(7);
+    out[0] = mode(); out[1] = OP_LOOKUP;
+    for (let k = 6; k >= 2; k--) { out[k] = Number(v & 0xffn); v >>= 8n; }
+    return out;
+  }
+  function makeAnswer(pub, nick, id, maxPayload) {
+    const data = Bytes.concat(pub, Bytes.utf8(nick));
+    const size = Math.max(1, maxPayload - HEAD);
+    const chunks = [];
+    for (let k = 0; k < data.length; k += size) chunks.push(data.slice(k, k + size));
+    if (chunks.length > 15) throw new NumberException("radio profile too small for a number answer");
+    return chunks.map((c, j) => Bytes.concat(Uint8Array.of(mode(), OP_ANSWER, id & 0xff, (j << 4) | chunks.length), c));
+  }
+  const isDirectory = (f) => f.length >= 1 && (f[0] >> 6) === 1 && ((f[0] >> 3) & 7) === DIRECTORY;
+  function parseFrame(f) {
+    if (f.length < 2 || !isDirectory(f)) return null;
+    if (f[1] === OP_LOOKUP && f.length === 7) {
+      let v = 0n;
+      for (let k = 2; k < 7; k++) v = (v << 8n) | BigInt(f[k]);
+      return v >= 1000000000n && v <= 9999999999n ? { op: "lookup", number: String(v) } : null;
+    }
+    if (f[1] === OP_ANSWER && f.length > HEAD) {
+      const part = f[3] >> 4, parts = f[3] & 15;
+      if (parts && part < parts) return { op: "answer", id: f[2], part, parts, chunk: f.slice(HEAD) };
+    }
+    return null;
+  }
+  return { numberOf, format, parse, makeLookup, makeAnswer, parseFrame, isDirectory, luhn };
+})();
+
+// Direct (one-to-one) messages: plaintext inside the sealed frame starts with
+const DM = { TEXT: 1, RESEND: 2, RECEIPT: 3, MAX_ACKS: 4 };
+const DM_INNER = { 1: "text", 2: "resend", 3: "receipt" };
+const dmId = (counter) => counter % 4294967296;          // low 32 bits of the counter
+
 class Keyring {
   constructor(store, name, me = null, passphrase = null) {
     this.store = store; this.name = name; this.me = me;
     this.encrypted = name.endsWith(".lkey");
-    this.locked = false; this.vault = null; this.cache = new Map(); this.seenCtrl = new Set();
+    this.locked = false; this.vault = null; this.cache = new Map(); this.seenCtrl = new Set(); this.pairs = new Map();
     this.dirty = false; this.lastSave = 0; this.floor = Crypto.startupFloor();
     this._load(passphrase);
   }
@@ -1318,6 +1527,7 @@ class Keyring {
     Ids.checkNick(d.me);
     this.data = d; this.me = d.me ?? null; this.locked = false;
     this.pub = Ed25519.publicKey(Bytes.unb32(d.id_seed));
+    this._findable = d.findable !== false;            // kept while locked
     if (dirtyNow) this.save();
   }
 
@@ -1333,7 +1543,7 @@ class Keyring {
   wipe() {
     if (this.locked) return;
     this.save();
-    this.data = Keyring.empty(this.me); this.vault = null; this.cache.clear(); this.locked = true;
+    this.data = Keyring.empty(this.me); this.vault = null; this.cache.clear(); this.pairs.clear(); this.locked = true;
   }
   unlock(passphrase) { this._load(passphrase); }
   changePassphrase(newPass) {
@@ -1359,25 +1569,73 @@ class Keyring {
     return `lid1:${this.handle}:${Bytes.b32(this.pub)}`;
   }
   fingerprint() { return Ids.fingerprint(this.pub); }
+  get number() {
+    if (!this._number) {
+      const d = this.data;
+      if (d.number && d.number_pub === Bytes.b32(this.pub)) this._number = d.number;
+      else {
+        this._number = Numbers.numberOf(this.pub);
+        if (!this.locked) { d.number = this._number; d.number_pub = Bytes.b32(this.pub); this.dirty = true; }
+      }
+    }
+    return this._number;
+  }
+  get findable() { return this._findable; }
+  setFindable(on) { this._requireUnlocked(); this.data.findable = this._findable = !!on; this.save(); }
   _myKey() {
     if (!this.handle) throw new KeyException("set a nick to post in groups");
     return this.handle.toLowerCase();
   }
 
   // -- contacts ----------------------------------------------------------------------------
-  addContact(lid, name = null) {
+  // A pasted / scanned identity string holds the full key: the contact is verified.
+  addContact(lid, name = null, verified = true) {
     this._requireUnlocked();
     const [h, p] = Ids.parseLid(lid);
     const n = ((name && name.trim()) || h.split("#")[0]).trim();
-    this._sec("contacts")[Bytes.b32(p)] = { name: n, handle: h };
+    const k = Bytes.b32(p);
+    const old = this._sec("contacts")[k] || {};
+    this._sec("contacts")[k] = { name: n, handle: h, dm_out: old.dm_out || 0, dm_in: old.dm_in || 0,
+      verified: !!(verified || old.verified), number: old.number || Numbers.numberOf(p) };
+    this.pairs.delete(k);
     this.save();
     return n;
+  }
+  // Found by number over the air: check the key really has that number, and no other
+  // saved contact has it (that would mean somebody is faking it).
+  addFound(pub, nick, number, name = null) {
+    Ids.checkNick(nick);
+    if (Numbers.numberOf(pub) !== number) throw new KeyException("the answer does not match that number");
+    for (const [k, c] of Object.entries(this._sec("contacts")))
+      if (k !== Bytes.b32(pub) && this._contactNumber(k, c) === number)
+        throw new KeyException(`${c.name} already has number ${Numbers.format(number)} with a different key - check in person`);
+    return this.addContact(`lid1:${Ids.makeHandle(nick, pub)}:${Bytes.b32(pub)}`, name, false);
+  }
+  _contactNumber(k, c) {
+    if (!c.number) { c.number = Numbers.numberOf(Bytes.unb32(k)); this.dirty = true; }
+    return c.number;
+  }
+  contactByNumber(number) {
+    for (const [k, c] of Object.entries(this._sec("contacts"))) if (this._contactNumber(k, c) === number) return c;
+    return null;
+  }
+  contactInfo() {
+    const me = Bytes.b32(this.pub);
+    return Object.entries(this._sec("contacts")).filter(([k]) => k !== me)
+      .map(([k, c]) => ({ name: c.name, handle: c.handle, number: this._contactNumber(k, c), verified: c.verified !== false }))
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+  }
+  renameContact(handle, name) {
+    this._requireUnlocked();
+    if (!name || !name.trim()) throw new KeyException("a name is needed");
+    this._contact(handle)[1].name = name.trim();
+    this.save();
   }
   removeContact(name) {
     this._requireUnlocked();
     const c = this._sec("contacts");
     for (const [k, m] of Object.entries(c))
-      if (m.name === name || (m.handle || "").toLowerCase() === name.toLowerCase()) { delete c[k]; this.save(); return true; }
+      if (m.name === name || (m.handle || "").toLowerCase() === name.toLowerCase()) { delete c[k]; this.pairs.delete(k); this.save(); return true; }
     return false;
   }
   contacts() {
@@ -1386,6 +1644,84 @@ class Keyring {
   display(handle, pub) {
     if (pub) { const c = this._sec("contacts")[Bytes.b32(pub)]; if (c && c.name) return c.name; }
     return handle;
+  }
+
+  // -- direct (one-to-one) messages (see keyring.py) -----------------------------------------
+  //   pair = HMAC(a_me * A_peer, "lora-text/pair/" + h1 + "|" + h2)[:16]   (handles lower, sorted)
+  //   each direction: member_secret(pair, sender handle); ordinary SEALED frames
+  directContacts() {
+    const me = Bytes.b32(this.pub);
+    return Object.entries(this._sec("contacts")).filter(([k]) => k !== me)
+      .map(([, c]) => [c.handle, c.name]).sort((a, b) => a[1].toLowerCase().localeCompare(b[1].toLowerCase()));
+  }
+  _contact(handle) {
+    for (const [k, c] of Object.entries(this._sec("contacts")))
+      if (c.handle.toLowerCase() === handle.toLowerCase()) return [k, c];
+    throw new KeyException(`'${handle}' is not one of your contacts`);
+  }
+  _dmKeys(key, c) {
+    if (!this.pairs.has(key)) {
+      let secrets = null;
+      if (this.me && key !== Bytes.b32(this.pub)) {
+        const s = Ed25519.sharedPoint(Bytes.unb32(this.data.id_seed), Bytes.unb32(key));
+        if (s) {
+          const me = this.handle.toLowerCase(), peer = c.handle.toLowerCase();
+          const [h1, h2] = [me, peer].sort();
+          const pair = Crypto.derive(s, `pair/${h1}|${h2}`).slice(0, 16);
+          secrets = [Crypto.memberSecret(pair, me), Crypto.memberSecret(pair, peer)];
+        }
+      }
+      this.pairs.set(key, secrets);
+    }
+    return this.pairs.get(key);
+  }
+  _sealDm(handle, plaintext) {
+    this._requireUnlocked();
+    const [key, c] = this._contact(handle);
+    const keys = this._dmKeys(key, c);
+    if (!keys) throw new KeyException(`cannot message ${c.name}: their identity key is not usable`);
+    const i = Crypto.nextCounter(c.dm_out || 0, this.floor);
+    const mode = Protocol.makeMode(MsgType.SEALED, 0, Protocol.PRIVATE_VERSION);
+    const frame = Crypto.seal(this._key(keys[0]), mode, i, plaintext, true);
+    c.dm_out = i;
+    this.save();
+    return [frame, i];
+  }
+  sealDirect(handle, text, resend = false) {
+    const body = Bytes.utf8(Protocol.normalize(text.trim()));
+    const limit = Protocol.profile.maxPayload - Crypto.FRAME_OVERHEAD - 1;
+    if (body.length > limit) throw new PayloadTooLong(`${body.length} B of text > ${limit} B limit for a direct message`);
+    return this._sealDm(handle, Bytes.concat(new Uint8Array([resend ? DM.RESEND : DM.TEXT]), body));
+  }
+  makeReceipt(handle, ids) {
+    const parts = [new Uint8Array([DM.RECEIPT])];
+    for (const i of ids.slice(0, DM.MAX_ACKS)) parts.push(Bytes.intBE(dmId(i)));
+    return this._sealDm(handle, Bytes.concat(...parts))[0];
+  }
+  _openDirect(frame, t) {
+    for (const [key, c] of Object.entries(this._sec("contacts"))) {
+      const keys = this._dmKeys(key, c);
+      if (!keys) continue;
+      const k = this._key(keys[1]);
+      for (const i of Crypto.matchingCounters(k, frame, c.dm_in || 0, t)) {
+        const pt = Crypto.unseal(k, frame, i, true);
+        if (!pt.length || !(pt[0] in DM_INNER)) continue;
+        let text = "", acks = [];
+        if (pt[0] === DM.RECEIPT) {
+          const n = pt.length - 1;
+          if (n === 0 || n % 4 || n > 4 * DM.MAX_ACKS) continue;
+          for (let j = 0; j < n / 4; j++) acks.push(Bytes.readIntBE(pt, 1 + 4 * j));
+        } else {
+          text = Bytes.utf8Strict(pt, 1);
+          if (text === null) continue;
+        }
+        c.dm_in = i;
+        this.touch();
+        return { kind: "direct", source: "@" + c.handle, sender: c.name, text, counter: i, pub: Bytes.unb32(key),
+                 verified: true, group: false, inner: DM_INNER[pt[0]], acks };
+      }
+    }
+    return null;
   }
 
   // -- management ----------------------------------------------------------------------------
@@ -1602,7 +1938,10 @@ class Keyring {
     if (version !== Protocol.PRIVATE_VERSION || (type !== MsgType.SIGNED && type !== MsgType.SEALED) ||
         frame.length < Crypto.FRAME_OVERHEAD) return null;
     const encrypted = type === MsgType.SEALED;
-    if (encrypted) { const c = this._openCtrl(frame, t); if (c) return c; }
+    if (encrypted) {
+      const c = this._openCtrl(frame, t); if (c) return c;
+      const d = this._openDirect(frame, t); if (d) return d;
+    }
     for (const rx of this._receiveStreams()) {
       const k = this._key(rx.secret);
       for (const i of Crypto.matchingCounters(k, frame, rx.holder[rx.field] || 0, t)) {
@@ -1650,7 +1989,9 @@ class MessageLog {
     return r.id;
   }
   _find(id) { for (let i = this.rows.length - 1; i >= 0; i--) if (this.rows[i].id === id) return this.rows[i]; return null; }
-  setTxOk(id, ok) { const r = this._find(id); if (r) { r.tx_ok = ok ? 1 : 0; this._changed(); } }
+  setTxOk(id, ok) { this.setStatus(id, ok ? 1 : 0); }
+  // tx_ok: 0 not sent, 1 sent, 2 delivered, 3 not confirmed (direct messages)
+  setStatus(id, code) { const r = this._find(id); if (r) { r.tx_ok = code; this._changed(); } }
   update(id, kind, text, channel, sender) {
     const r = this._find(id); if (!r) return;
     Object.assign(r, { kind, text, channel, sender }); this._changed();
@@ -1927,13 +2268,25 @@ class Node {
     this.log = new MessageLog(store, logName, logSaveDelayMs);
     this.logMaxRows = logMaxRows; this.logMaxDays = logMaxDays;
     this.inserts = 0; this.pending = new Map();
+    this.awaiting = new Map(); this.acks = new Map(); this.seenDm = new Map(); this.timers = new Set();
     this.onMsg = () => {}; this.onUpdate = () => {}; this.onLog = () => {};
+    this.lookups = new Map(); this.parts = new Map(); this.lastAnswer = 0;
+    this.onLookup = () => {};             // {number, status: found|conflict|notfound, nick, handle}
     this.radio = null; this.firmware = "?"; this.publicTag = false;
     this.pruneLog();
     this.processPending();
   }
   static READ_ONLY = new Set(["follow", "other"]);
-  static SENSITIVE = new Set(["sealed", "signed", "join"]);
+  static SENSITIVE = new Set(["sealed", "signed", "join", "direct"]);
+  static RECEIPT_WAIT = 30;            // s after sending: no receipt -> 'unconfirmed'
+  static RECEIPT_DELAY = [1, 4];       // s before confirming a direct message (random)
+  static RESEND_SAME = 1800;           // s: a resent text already shown is not shown again
+  static STATUS_CODE = { failed: 0, sent: 1, delivered: 2, unconfirmed: 3 };
+  static LOOKUP_WAIT = 10;             // s to wait for answers to "who has this number?"
+  static LOOKUP_RETRY = 4;             // s: ask once more if nobody answered yet
+  static ANSWER_DELAY = [0.3, 1.5];    // s before answering a lookup for my number
+  static ANSWER_GAP = 3;               // s: answer at most this often
+  static QUIET = new Set(["receipt", "lookup"]);
 
   get nick() { return this.keys.me; }
   get handle() { return this.keys.handle; }
@@ -1941,6 +2294,9 @@ class Node {
   get callsign() { return this.publicTag && this.handle ? this.handle : this.nick; }
 
   async start(radio, { configure = false, autoApply = true } = {}) {
+    // the airtime count and rate limit survive unplugging: a replug must not reset the duty cycle
+    if (this.meter) { radio.meter = this.meter; radio.limiter = this.limiter; }
+    else { this.meter = radio.meter; this.limiter = radio.limiter; }
     this.radio = radio;
     radio.onPacket = (p) => this._onPacket(p);
     radio.onTx = (r) => this._onTx(r);
@@ -1961,23 +2317,43 @@ class Node {
     await r.pause();
     try { Protocol.applyProfile(p); return await r.configure(); } finally { r.resume(); }
   }
-  async detachRadio() { const r = this.radio; this.radio = null; if (r) await r.close(); }
-  async stop() { await this.detachRadio(); this.keys.close(); this.log.flush(); }
+  async detachRadio() {
+    const r = this.radio; this.radio = null;
+    // frames still waiting fail now (sealed frames carry a time-based counter: sending
+    // them much later would be refused); the user resends once the radio is back
+    for (const [job, m] of this.pending) {
+      this.pending.delete(job);
+      if (m.status === "queued") { m.status = "failed"; if (m.row) this.log.setTxOk(m.row, false); this.onUpdate(m); }
+    }
+    if (r) await r.close();
+  }
+  async stop() { for (const t of this.timers) clearTimeout(t); await this.detachRadio(); this.keys.close(); this.log.flush(); }
+  _later(s, fn) {
+    const t = setTimeout(() => { this.timers.delete(t); try { fn(); } catch (e) { this.onLog(e.message); } }, s * 1000);
+    this.timers.add(t);
+  }
   pruneLog() { return this.log.prune(this.logMaxRows, this.logMaxDays); }
   _logged() { if (++this.inserts % 200 === 0) this.pruneLog(); }
 
   // -- channels --------------------------------------------------------------------------
   channels() {
     if (this.keys.locked) return [["all", "all"], ["public", "public"], ["other", "other"]];
-    return [["all", "all"], ["public", "public"], ...this.keys.groups().map((g) => [g, "group"]),
+    return [["all", "all"], ["public", "public"], ...this.keys.directContacts().map(([h]) => ["@" + h, "direct"]),
+      ...this.keys.groups().map((g) => [g, "group"]),
       ...this.keys.own().map((g) => [g, "own"]), ...this.keys.followed().map((g) => [g, "follow"]), ["other", "other"]];
   }
   channelType(ch) { const c = this.channels().find((x) => x[0] === ch); return c ? c[1] : "other"; }
   canSend(ch) { return !Node.READ_ONLY.has(this.channelType(ch)); }
+  channelTitle(ch) {
+    if (!ch.startsWith("@")) return ch;
+    const c = this.locked ? null : this.keys.directContacts().find(([h]) => "@" + h === ch);
+    return c ? c[1] : ch.slice(1);
+  }
   byteCount(ch, text) {
     if (!text.trim()) return 0;
-    return ["group", "own"].includes(this.channelType(ch))
-      ? Bytes.utf8(Protocol.normalize(text.trim())).length + Crypto.FRAME_OVERHEAD
+    const t = this.channelType(ch);
+    return ["group", "own", "direct"].includes(t)
+      ? Bytes.utf8(Protocol.normalize(text.trim())).length + Crypto.FRAME_OVERHEAD + (t === "direct" ? 1 : 0)
       : Protocol.frameLenPlain(Protocol.compose(text, this.callsign));
   }
   get maxBytes() { return Protocol.profile.maxPayload; }
@@ -1988,7 +2364,8 @@ class Node {
     if (!r) throw new KeyException("not connected to a radio");
     const ctype = this.channelType(channel), text = text0.trim();
     if (Node.READ_ONLY.has(ctype)) throw new KeyException(`'${channel}' is read-only - switch to public, a group or your own stream`);
-    if (this.locked && (ctype === "group" || ctype === "own")) throw new LockedException("identity is locked - unlock first");
+    if (this.locked && ["group", "own", "direct"].includes(ctype)) throw new LockedException("identity is locked - unlock first");
+    if (ctype === "direct") return this._sendDirect(channel, text);
     let frame, kind;
     if (ctype === "group" || ctype === "own") { frame = this.keys.sealFor(channel, text, signed); kind = signed ? "signed" : "sealed"; }
     else { frame = Protocol.encodePlain(Protocol.compose(text, this.callsign)); kind = "plain"; }
@@ -2001,6 +2378,58 @@ class Node {
     this._logged();
     this.pending.set(job, m);
     return m;
+  }
+  _sendDirect(channel, text) {
+    const peer = channel.slice(1);
+    const [frame, i] = this.keys.sealDirect(peer, text);
+    const job = this.radio.send(frame);
+    const m = { ts: Crypto.nowSeconds(), direction: "tx", kind: "direct", channel, sender: this.handle || this.nick || "me",
+                text, size: frame.length, job, status: "queued", airtime: Protocol.airtimeMs(frame.length), verified: true,
+                group: false, rssi: null, snr: null, peer, dmId: dmId(i) };
+    const [ch, snd] = this._logMeta(m);
+    m.row = this.log.add("tx", frame, "direct", this._logText(m), null, null, m.airtime, m.ts, ch, snd);
+    this._logged();
+    this.pending.set(job, m);
+    return m;
+  }
+  // Send a direct message again (no receipt came): the receiver doesn't show it twice
+  resend(m) {
+    if (m.kind !== "direct" || m.direction !== "tx" || !m.peer) throw new KeyException("only direct messages can be resent");
+    if (!this.radio) throw new KeyException("not connected to a radio");
+    if (m.status === "queued" || m.status === "delivered") return m;
+    const [frame, i] = this.keys.sealDirect(m.peer, m.text, true);
+    m.job = this.radio.send(frame); m.dmId = dmId(i); m.status = "queued";
+    this.pending.set(m.job, m);
+    this.onUpdate(m);
+    return m;
+  }
+  _setStatus(m, status) {
+    m.status = status;
+    if (m.row) this.log.setStatus(m.row, Node.STATUS_CODE[status]);
+    this.onUpdate(m);
+  }
+  _confirm(peer, id) {
+    const key = peer.toLowerCase();
+    if (!this.acks.has(key)) this.acks.set(key, { peer, ids: [] });
+    const a = this.acks.get(key);
+    if (!a.ids.includes(id)) a.ids.push(id);
+    if (a.ids.length === 1) {
+      const [lo, hi] = Node.RECEIPT_DELAY;
+      this._later(lo + Math.random() * (hi - lo), () => this._sendReceipts(key));
+    }
+  }
+  _sendReceipts(key) {
+    const a = this.acks.get(key); this.acks.delete(key);
+    if (!a || !a.ids.length || this.locked || !this.radio) return;
+    for (let k = 0; k < a.ids.length; k += 4) this.radio.send(this.keys.makeReceipt(a.peer, a.ids.slice(k, k + 4)));
+  }
+  _onReceipt(m) {
+    for (const id of m.acks) {
+      const k = `${m.peer.toLowerCase()}|${id}`;
+      const sent = this.awaiting.get(k);
+      this.awaiting.delete(k);
+      if (sent && sent.status !== "delivered") this._setStatus(sent, "delivered");
+    }
   }
   announce(group) {
     const r = this.radio;
@@ -2016,13 +2445,90 @@ class Node {
     const m = this.pending.get(r.jobId);
     if (!m) return;
     this.pending.delete(r.jobId);
+    if (m.kind === "direct" && r.ok) {
+      const id = m.dmId;
+      this.awaiting.set(`${m.peer.toLowerCase()}|${id}`, m);
+      this._later(Node.RECEIPT_WAIT, () => { if (m.status === "sent" && m.dmId === id) this._setStatus(m, "unconfirmed"); });
+    }
+    if (m.status === "delivered") return;            // a receipt for an earlier copy came first
     m.status = r.ok ? "sent" : "failed";
     if (m.row) this.log.setTxOk(m.row, r.ok);
     this.onUpdate(m);
   }
 
+  // -- TextCast numbers --------------------------------------------------------------------
+  get number() { return this.keys.number; }
+  // Ask nearby devices "who has this number?". Returns {status: 'known'|'searching'};
+  // the result arrives through onLookup. Throws NumberException.
+  lookup(text) {
+    const number = Numbers.parse(text);
+    if (number === this.keys.number) throw new NumberException("that is your own number");
+    const c = this.locked ? null : this.keys.contactByNumber(number);
+    if (c) return { number, status: "known", name: c.name, handle: c.handle, channel: "@" + c.handle };
+    if (!this.radio) throw new KeyException("not connected to a radio");
+    this.lookups.set(number, { found: new Map() });
+    this.radio.send(Numbers.makeLookup(number));
+    this._later(Node.LOOKUP_RETRY, () => {
+      const st = this.lookups.get(number);
+      if (st && !st.found.size && this.radio) this.radio.send(Numbers.makeLookup(number));
+    });
+    this._later(Node.LOOKUP_WAIT, () => {
+      const st = this.lookups.get(number);
+      if (st && !st.found.size) { this.lookups.delete(number); this.onLookup({ number, status: "notfound" }); }
+    });
+    return { number, status: "searching" };
+  }
+  addFound(number, name = null) {
+    const st = this.lookups.get(number);
+    if (!st || st.found.size !== 1) throw new KeyException("nobody (or more than one key) answered for that number");
+    const [pubHex, nick] = [...st.found.entries()][0];
+    const pub = Bytes.unhex(pubHex);
+    this.keys.addFound(pub, nick, number, name);
+    this.lookups.delete(number);
+    return "@" + Ids.makeHandle(nick, pub);
+  }
+  setFindable(on) { this.keys.setFindable(on); }
+  _onDirectory(pkt) {
+    const d = Numbers.parseFrame(pkt.payload);
+    if (!d) return;
+    const now = Crypto.nowSeconds();
+    if (d.op === "lookup") {
+      if (d.number === this.keys.number && this.keys.findable && this.nick && this.radio && now - this.lastAnswer > Node.ANSWER_GAP) {
+        this.lastAnswer = now;
+        const [lo, hi] = Node.ANSWER_DELAY;
+        this._later(lo + Math.random() * (hi - lo), () => {
+          if (!this.radio) return;
+          for (const f of Numbers.makeAnswer(this.keys.pub, this.nick, Math.floor(Math.random() * 256), Protocol.profile.maxPayload))
+            this.radio.send(f);
+        });
+      }
+      return;
+    }
+    for (const [k, v] of this.parts) if (now - v.t > 30) this.parts.delete(k);
+    let st = this.parts.get(d.id);
+    if (!st || st.n !== d.parts) { st = { t: now, n: d.parts, chunks: new Map() }; this.parts.set(d.id, st); }
+    st.chunks.set(d.part, d.chunk);
+    if (st.chunks.size < d.parts) return;
+    this.parts.delete(d.id);
+    const data = Bytes.concat(...Array.from({ length: d.parts }, (_, j) => st.chunks.get(j)));
+    if (data.length < 33 || !this.lookups.size) return;
+    const pub = data.slice(0, 32), nick = Bytes.utf8Lenient(data.slice(32));
+    const number = Numbers.numberOf(pub);
+    const look = this.lookups.get(number), key = Bytes.hex(pub);
+    if (!look || look.found.has(key)) return;
+    look.found.set(key, nick);
+    if (look.found.size === 1) this.onLookup({ number, status: "found", nick, handle: Ids.makeHandle(nick, pub) });
+    else this.onLookup({ number, status: "conflict", nick: [...look.found.values()].join(", ") });
+  }
+
   // -- receiving ---------------------------------------------------------------------------
   _onPacket(pkt) {
+    if (Numbers.isDirectory(pkt.payload)) {
+      this.log.add("rx", pkt.payload, "lookup", null, pkt.rssi, pkt.snr, null, pkt.t);
+      this._logged();
+      this._onDirectory(pkt);
+      return;
+    }
     if (this.locked && Protocol.decode(pkt.payload).kind === "reserved") {
       const row = this.log.add("rx", pkt.payload, "pending", null, pkt.rssi, pkt.snr, null, pkt.t);
       this._logged();
@@ -2032,6 +2538,18 @@ class Node {
       return;
     }
     const m = this.classify(pkt);
+    if (m.kind === "receipt") {
+      this.log.add("rx", pkt.payload, "receipt", null, pkt.rssi, pkt.snr, null, pkt.t);
+      this._logged();
+      this._onReceipt(m);
+      return;
+    }
+    if (m.kind === "direct") {
+      if (this.radio) this._confirm(m.peer, m.dmId);
+      const key = `${m.peer.toLowerCase()}|${m.text}`, now = Crypto.nowSeconds();
+      if (m.resent && now - (this.seenDm.get(key) || 0) < Node.RESEND_SAME) return;   // shown already: just confirm
+      this.seenDm.set(key, now);
+    }
     const [ch, snd] = this._logMeta(m);
     m.row = this.log.add("rx", pkt.payload, m.kind, this._logText(m), pkt.rssi, pkt.snr, null, pkt.t, ch, snd);
     this._logged();
@@ -2055,6 +2573,12 @@ class Node {
     }
     if (d.kind === "reserved") {
       const op = this.keys.open(pkt.payload);
+      if (op && op.kind === "direct") {
+        const peer = op.source.slice(1);
+        if (op.inner === "receipt") return Object.assign(mk("receipt", op.source, op.sender, "", true), { peer, acks: op.acks });
+        return Object.assign(mk("direct", op.source, op.sender, Protocol.clean(op.text), true),
+                             { peer, dmId: dmId(op.counter), resent: op.inner === "resend" });
+      }
       if (op) {
         if (op.group) return mk(op.kind, op.source, op.sender, Protocol.clean(op.text), false, true);
         const name = op.verified ? this.keys.display(op.sender, op.pub) : op.sender;
@@ -2092,6 +2616,7 @@ class Node {
   history(n = 300) {
     const out = [], c = this.cipher;
     for (const r of this.log.list(n)) {
+      if (Node.QUIET.has(r.kind)) continue;
       let { text, channel, sender } = r;
       if ([text, channel, sender].some((x) => typeof x === "string" && x.startsWith(LogCipher.PREFIX))) {
         if (!c) continue;
@@ -2102,10 +2627,11 @@ class Node {
       if (text === null || text === undefined) text = Protocol.decode(payload).display();
       let flag = "u", name = sender;
       if (sender && sender.length > 1 && sender[1] === ":" && "gvu".includes(sender[0])) { flag = sender[0]; name = sender.slice(2); }
-      const status = r.dir === "tx" ? (r.tx_ok === 1 ? "sent" : r.tx_ok === 0 ? "failed" : "unknown") : null;
+      const status = r.dir === "tx" ? ({ 0: "failed", 1: "sent", 2: "delivered", 3: "unconfirmed" }[r.tx_ok] || "unknown") : null;
       out.push({ ts: r.ts, direction: r.dir, kind: r.kind || "plain", channel: channel || (r.kind === "plain" ? "public" : "other"),
                  sender: name, text, rssi: r.rssi, snr: r.snr, size: payload.length, status, airtime: r.airtime_ms,
-                 verified: flag === "v", group: flag === "g", row: r.id });
+                 verified: flag === "v", group: flag === "g", row: r.id,
+                 peer: channel && channel.startsWith("@") ? channel.slice(1) : undefined });
     }
     return out;
   }
@@ -2134,7 +2660,7 @@ class Node {
   }
 }
 
-const TextCast = { Bytes, Crypto, Ed25519, Scrypt, Vault, LogCipher, WrongPassphrase, PayloadTooLong, ConfigError, KeyException, LockedException, HardwareError, airProfile, MsgType, Protocol, RateLimiter, AirtimeMeter, Regions, Settings, Hardware, La66Parser, Ids, Keyring, MessageLog, Radio, La66Radio, GenericAtRadio, makeRadio, Node, sleep };
+const TextCast = { Bytes, Crypto, Ed25519, Scrypt, Vault, LogCipher, WrongPassphrase, PayloadTooLong, ConfigError, KeyException, LockedException, HardwareError, airProfile, MsgType, Protocol, RateLimiter, AirtimeMeter, Regions, Settings, Hardware, La66Parser, Ids, Numbers, NumberException, Keyring, MessageLog, Radio, La66Radio, GenericAtRadio, makeRadio, Node, sleep };
 if (typeof module !== "undefined" && module.exports) module.exports = TextCast;
 else globalThis.TextCast = TextCast;
 })();
@@ -2142,7 +2668,7 @@ else globalThis.TextCast = TextCast;
 <script>
 "use strict";
 const { Bytes, Protocol, Settings, Regions, Hardware, Node, Keyring, Vault, makeRadio, KeyException, LockedException,
-        WrongPassphrase, PayloadTooLong, ConfigError, Crypto, sleep } = TextCast;
+        WrongPassphrase, PayloadTooLong, ConfigError, Crypto, Numbers, NumberException, sleep } = TextCast;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtTime = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -2203,7 +2729,7 @@ class SerialLink {
 let cfg = loadConfig();
 let node = null, link = null, hw = null, port = null;
 let msgs = [];               // shown messages (history + live)
-let view = "all";            // channel filter
+let view = null;            // the open conversation (channel), or null
 let seq = 0;
 const hasSerial = "serial" in navigator;
 
@@ -2367,7 +2893,7 @@ async function begin(withRadio) {
       chosen = await knownPort();                                   // a stick approved before: no picker
       if (!chosen) {
         try { chosen = await navigator.serial.requestPort(); }      // needs the click: ask before the slow unlock
-        catch (e) { startMsg("No radio chosen. Plug in the stick and press Start again, or open without radio.", "warn"); return; }
+        catch (e) { chosen = null; }                                // no stick yet: start anyway, connect later
       }
     }
     node = await openIdentity();
@@ -2385,126 +2911,283 @@ async function knownPort() {
   try { const ports = await navigator.serial.getPorts(); return ports.length ? ports[0] : null; } catch (e) { return null; }
 }
 
-// ===================================== radio =====================================
-async function connectRadio(chosen) {
-  if (connecting) return;
-  connecting = true;
-  try { await connectRadio0(chosen); } finally { connecting = false; refreshHeader(); }
+
+// ===================================== radio (connect, unplug, plug back) =====================================
+// Once the radio has been used, TextCast keeps trying to get it back: unplug it and plug it
+// in again (even into another USB socket) and it reconnects by itself, no reload needed.
+let connecting = false, wantRadio = false, radioTries = 0, radioState = "none";   // none | connecting | on | lost
+async function connectRadio(chosen, quiet = false) {
+  if (connecting || !node) return false;
+  connecting = true; radioState = "connecting"; refreshHeader();
+  try { return await connectRadio0(chosen, quiet); } finally { connecting = false; refreshHeader(); }
 }
-async function connectRadio0(chosen) {
+async function connectRadio0(chosen, quiet) {
   port = chosen;
   setStatus("Connecting to the radio…");
   try { link = await SerialLink.open(port, hw.baud); }
-  catch (e) { sys(`Could not open the radio: ${e.message}. Is another app (or tab) using it?`, "err"); link = null; refreshHeader(); return; }
+  catch (e) {
+    link = null; radioState = wantRadio ? "lost" : "none";
+    if (!quiet) sys(`Could not open the radio: ${e.message}. Is another app (or tab) using it?`, "err");
+    return false;
+  }
+  wantRadio = true;
   const radio = makeRadio(hw, link);
   link.onLost = () => radioLost();
   link.start(radio);
   node.onLog = (s) => sys(s.startsWith("module settings differ") ? "Setting up the radio for TextCast…" : s);
   setStatus("Checking the radio settings (a few seconds)…");
   const problems = await node.start(radio);
+  if (!node.radio) return false;                         // unplugged again while checking
+  radioState = "on"; radioTries = 0;
   if (problems.length) sys("The radio did not take all settings: " + problems.join("; "), "err");
-  else sys(`Radio ready: ${Protocol.profile.freqMhz.toFixed(3)} MHz, SF${Protocol.profile.sf}, ${Protocol.profile.bwHz / 1000} kHz. Say hello!`);
-  refreshHeader();
+  else sys(`Radio ready: ${Protocol.profile.freqMhz.toFixed(3)} MHz, SF${Protocol.profile.sf}. Say hello!`);
+  return true;
 }
+let losing = false;
 async function radioLost() {
-  if (!node) return;
-  sys("The radio was unplugged. Plug it back in and press 🔌.", "err");
-  const l = link; link = null;
-  await node.detachRadio();
-  try { await l?.close(); } catch (e) { /* */ }
-  refreshHeader();
+  if (!node || losing) return;
+  losing = true;
+  try {
+    const l = link; link = null;
+    if (node.radio) sys("Radio unplugged. Plug it back in: TextCast reconnects by itself.", "err");
+    radioState = "lost";
+    await node.detachRadio();
+    try { await l?.close(); } catch (e) { /* */ }
+  } finally { losing = false; refreshHeader(); }
+}
+// a stick approved before is back (or still there after an error): reconnect without asking
+async function autoReconnect() {
+  if (!node || node.radio || connecting || !wantRadio || !hasSerial) return;
+  const p = (await knownPorts()).find((x) => x.connected !== false);
+  if (!p) return;
+  radioTries++;
+  if (await connectRadio(p, radioTries > 1)) return;
+  if (radioTries === 3) sys("The radio is plugged in but doesn't answer. Unplug it, wait a moment and plug it in again.", "err");
+}
+async function knownPorts() {
+  try { return await navigator.serial.getPorts(); } catch (e) { return []; }
 }
 if (hasSerial) {
   navigator.serial.addEventListener("disconnect", (e) => { if (port && e.target === port && node?.radio) radioLost(); });
-  // an approved stick plugged (back) in while TextCast is open: connect without asking
-  navigator.serial.addEventListener("connect", (e) => { if (node && !node.radio && !connecting) connectRadio(e.target); });
+  navigator.serial.addEventListener("connect", () => setTimeout(autoReconnect, 300));
+  setInterval(autoReconnect, 2500);
 }
-let connecting = false;
-
 $("#bReconnect").onclick = async () => {
   if (node.radio || connecting) return;
-  let chosen = await knownPort();
+  let chosen = (await knownPorts())[0] || null;
   if (!chosen) { try { chosen = await navigator.serial.requestPort(); } catch (e) { return; } }
+  radioTries = 0;
   await connectRadio(chosen);
 };
 
-// ===================================== chat =====================================
+// ===================================== home =====================================
+const wideScreen = () => matchMedia("(min-width: 760px)").matches;
+const CONV_TYPES = ["public", "direct", "group", "own", "follow"];
+const PRIVATE = ["sealed", "signed", "join", "direct"];
+
 function showChat() {
-  $("#start").classList.add("hide"); $("#chat").classList.remove("hide");
+  $("#start").classList.add("hide"); $("#home").classList.remove("hide");
+  wantRadio = hasSerial;               // pick up an approved stick whenever it is plugged in
   node.onMsg = (m) => addMsg(m);
   node.onUpdate = (m) => updateMsg(m);
+  node.onLookup = (r) => lookupResult(r);
   node.publicTag = !!cfg.ui.public_tag;
   msgs = node.history(400).map((m) => ({ ...m, key: m.row ? "r" + m.row : "s" + (++seq) }));
-  view = "all";
-  renderChips(); renderFeed(); fillSendTo(); refreshHeader(); refreshLockbar(); refreshBackupbar();
+  renderList(); refreshHeader(); refreshLockbar(); refreshBackupbar();
+  if (wideScreen()) openChat("public", false); else showConv(false);
   setInterval(refreshHeader, 1000);
   keepStorage();
-  $("#text").focus();
 }
 function sys(text, cls = "") {
   if (!node) { startMsg(text, cls); return; }
-  msgs.push({ sys: true, text, cls, key: "s" + (++seq), ts: Crypto.nowSeconds(), channel: "*" });
+  // a notice belongs to the chat that is open (the radio status is always at the top of the list)
+  msgs.push({ sys: true, text, cls, key: "s" + (++seq), ts: Crypto.nowSeconds(), channel: view || "public" });
   if (msgs.length > 600) msgs.shift();
   appendRow(msgs[msgs.length - 1]);
 }
 function setStatus(t) { $("#hStatus").textContent = t; }
 function refreshHeader() {
   if (!node) return;
-  $("#hHandle").textContent = node.handle || node.nick;
-  $("#bReconnect").classList.toggle("hide", !!node.radio || !hasSerial);
-  $("#bLock").classList.toggle("hide", !node.protected);
-  const p = Protocol.profile;
-  if (!node.radio) { setStatus("no radio · " + (hasSerial ? "press 🔌 to connect" : "reading only")); return; }
+  const bar = $("#radio"), p = Protocol.profile;
+  $("#bReconnect").classList.toggle("hide", !!node.radio || connecting || !hasSerial || radioState === "lost");
+  bar.className = node.radio && !connecting ? "on" : !connecting && hasSerial ? "off" : "";
+  if (connecting) return;
+  if (!hasSerial) { setStatus("This browser can't use a USB radio: reading only"); return; }
+  if (!node.radio) { setStatus(radioState === "lost" ? "Radio unplugged · plug it back in" : "No radio · plug it in to send"); return; }
   const s = node.stats();
-  let t = `${p.freqMhz.toFixed(3)} MHz SF${p.sf} · duty ${s.dutyPct.toFixed(2)}%`;
+  let t = `Radio on · ${p.freqMhz.toFixed(1)} MHz · SF${p.sf}`;
   if (s.queue) t += ` · ${s.queue} waiting` + (s.waitS > 1 ? ` (about ${Math.ceil(s.waitS)} s)` : "");
   setStatus(t);
 }
-function chanLabel(c, type) {
-  if (type === "all") return "All"; if (type === "public") return "Public"; if (type === "other") return "Other";
-  return (type === "group" ? "🔒 " : type === "own" ? "📢 " : "📻 ") + c;
+
+// -- avatars, titles --------------------------------------------------------------------
+const COLORS = ["#c0392b", "#d35400", "#b7950b", "#27ae60", "#16a085", "#2980b9", "#8e44ad", "#2c3e50", "#a0522d", "#5d6d7e"];
+function avatar(el, ch, type) {
+  const t = type || node.channelType(ch);
+  const icon = { public: "📢", group: "👥", own: "📣", follow: "📻" }[t];
+  const name = title(ch, t);
+  let h = 0; for (const c of name) h = (h * 31 + c.codePointAt(0)) >>> 0;
+  el.textContent = icon || (name.trim()[0] || "?").toUpperCase();
+  el.style.background = t === "public" ? "var(--acc)" : COLORS[h % COLORS.length];
 }
-function renderChips() {
-  const chans = node.channels();
-  if (!chans.some((c) => c[0] === view)) view = "all";
-  $("#chips").innerHTML = chans.map(([c, t]) => `<button class="chip${c === view ? " on" : ""}" data-c="${esc(c)}">${esc(chanLabel(c, t))}</button>`).join("");
-  $("#chips").querySelectorAll(".chip").forEach((b) => (b.onclick = () => { view = b.dataset.c; renderChips(); renderFeed(); fillSendTo(); }));
+const title = (ch, t) => (t || node.channelType(ch)) === "public" ? "Public" : node.channelTitle(ch);
+function contactOf(ch) {
+  if (!ch || !ch.startsWith("@") || node.locked) return null;
+  return node.keys.contactInfo().find((c) => "@" + c.handle === ch) || null;
 }
-function fillSendTo() {
-  const sel = $("#sendTo"), cur = sel.value;
-  const opts = node.channels().filter(([, t]) => ["public", "group", "own"].includes(t));
-  sel.innerHTML = opts.map(([c, t]) => `<option value="${esc(c)}">${esc(t === "public" ? "everyone nearby" : chanLabel(c, t))}</option>`).join("");
-  sel.value = opts.some((o) => o[0] === view) ? view : opts.some((o) => o[0] === cur) ? cur : "public";
-  updateCount();
+
+// -- read state (per identity, per chat) -------------------------------------------------------
+function readMap() { cfg.ui.read = cfg.ui.read || {}; return (cfg.ui.read[node.nick] = cfg.ui.read[node.nick] || {}); }
+function markRead(ch) { const r = readMap(); const last = lastOf(ch); r[ch] = Math.max(Crypto.nowSeconds(), last ? last.ts : 0); saveConfig(); }
+const inChat = (m, ch) => !m.sys && (m.channel === ch);
+function lastOf(ch) { for (let i = msgs.length - 1; i >= 0; i--) if (inChat(msgs[i], ch)) return msgs[i]; return null; }
+function unreadOf(ch) {
+  if (ch === view && !document.hidden) return 0;
+  const since = readMap()[ch] || 0;
+  return msgs.filter((m) => inChat(m, ch) && m.direction === "rx" && m.ts > since && !["undecoded", "locked"].includes(m.kind)).length;
 }
-const shown = (m) => m.sys || view === "all" || m.channel === view || (view === "public" && m.channel === "public");
-function rowHtml(m) {
-  if (m.sys) return `<div class="sys ${m.cls || ""}">${esc(m.text)}</div>`;
-  const priv = ["sealed", "signed", "join"].includes(m.kind);
+function dayLabel(t) {
+  const d = new Date(t * 1000), now = new Date();
+  if (d.toDateString() === now.toDateString()) return "Today";
+  const y = new Date(now); y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], { day: "numeric", month: "short", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+}
+const listTime = (t) => (dayLabel(t) === "Today" ? fmtTime(t) : dayLabel(t));
+
+// -- chat list ------------------------------------------------------------------------------
+function renderList() {
+  const convs = node.channels().filter(([, t]) => CONV_TYPES.includes(t));
+  const rows = convs.map(([c, t]) => ({ c, t, last: lastOf(c), unread: unreadOf(c) }));
+  rows.sort((a, b) => (a.t === "public") ? -1 : (b.t === "public") ? 1
+    : (b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0) || title(a.c, a.t).localeCompare(title(b.c, b.t)));
+  const html = rows.map(({ c, t, last, unread }) => {
+    let prev = { public: "Everyone nearby", direct: "Tap to write a private message", group: "Group", own: "Your broadcast channel", follow: "Channel" }[t];
+    if (last) {
+      const who = last.direction === "tx" ? (last.kind === "direct" ? tick(last) + " " : "You: ")
+        : (t === "public" || t === "group") && last.sender ? `${last.sender}: ` : "";
+      prev = who + last.text;
+    }
+    return `<div class="ci${c === view ? " on" : ""}${unread ? " unread" : ""}" data-c="${esc(c)}"><div class="av"></div><div class="mid">` +
+      `<div class="l1"><b>${esc(title(c, t))}</b><small>${last ? esc(listTime(last.ts)) : ""}</small></div>` +
+      `<div class="l2"><span>${esc(prev)}</span>${unread ? `<i class="badge">${unread}</i>` : ""}</div></div></div>`;
+  }).join("");
+  const me = node.locked ? "" : `<div class="listnote">Your number: <b>${esc(Numbers.format(node.number))}</b><br>Press ＋ and type a friend's number to chat privately.</div>`;
+  $("#chatList").innerHTML = html + (rows.length <= 1 ? me : "");
+  $("#chatList").querySelectorAll(".ci").forEach((el) => {
+    const c = el.dataset.c;
+    avatar(el.querySelector(".av"), c, node.channelType(c));
+    el.onclick = () => openChat(c);
+  });
+}
+// tick shown in the list for a private message I sent
+function tick(m) { return { queued: "🕓", sent: "✓", delivered: "✓✓", unconfirmed: "⚠", failed: "⚠" }[m.status] || ""; }
+
+// -- conversation -----------------------------------------------------------------------------
+function showConv(on) {
+  document.body.classList.toggle("open", on);
+  $("#noConv").classList.toggle("hide", on && !!view);
+  for (const id of ["#convHead", "#feed", "#bar", "#readOnly"]) if (!view) $(id).classList.add("hide");
+}
+function openChat(ch, push = true) {
+  view = ch;
+  const t = node.channelType(ch);
+  for (const id of ["#convHead", "#feed"]) $(id).classList.remove("hide");
+  const canSend = node.canSend(ch);
+  $("#bar").classList.toggle("hide", !canSend);
+  $("#readOnly").classList.toggle("hide", canSend);
+  avatar($("#cAv"), ch, t);
+  $("#cTitle").textContent = title(ch, t);
+  $("#cSub").textContent = subtitle(ch, t);
+  showConv(true);
+  if (push && !wideScreen()) history.pushState({ chat: ch }, "");
+  markRead(ch);
+  renderFeed(); renderList(); updateCount();
+  if (canSend && (wideScreen() || push)) $("#text").focus();
+}
+function closeChat() { view = null; showConv(false); renderList(); }
+$("#bBack").onclick = () => (history.state && history.state.chat ? history.back() : closeChat());
+window.addEventListener("popstate", () => { if (!wideScreen() && view) closeChat(); });
+function subtitle(ch, t) {
+  if (t === "public") return "Everyone nearby can read";
+  if (t === "direct") {
+    const c = contactOf(ch);
+    return "🔒 Private" + (c ? " · " + Numbers.format(c.number) : "");
+  }
+  if (t === "group") { const g = node.keys.listing().find(([l]) => l === ch); return "🔒 Group" + (g ? " · " + g[2].replace(/^members: /, "") : ""); }
+  if (t === "own") return "Your channel · you post, followers read";
+  if (t === "follow") { const g = node.keys.listing().find(([l]) => l === ch); return "Channel " + (g ? g[2] : ""); }
+  return "";
+}
+$("#cWho").onclick = () => showInfo(view);
+$("#bInfo").onclick = () => showInfo(view);
+
+const shown = (m) => !!view && m.channel === view;
+function bubble(m) {
+  if (m.sys) return `<div class="sys ${m.cls || ""}"><span>${esc(m.text)}</span></div>`;
+  const tx = m.direction === "tx", t = node.channelType(view);
   const dim = ["undecoded", "locked", "pending", "unverified"].includes(m.kind);
-  const who = m.direction === "tx" ? "me" : (m.sender || "?");
-  let meta = fmtTime(m.ts);
-  if (m.channel && m.channel !== "public") meta += ` · ${priv ? "🔒 " : ""}${esc(m.channel)}`;
-  if (m.kind === "signed") meta += " · signed";
-  if (m.verified && m.direction === "rx" && !m.group) meta += " ✓";
-  if (m.direction === "rx" && m.rssi !== null && m.rssi !== undefined) meta += ` · ${m.rssi} dBm` + (m.snr !== null && m.snr !== undefined ? ` · SNR ${m.snr}` : "");
-  if (m.direction === "tx") meta += m.status === "sent" ? " · sent ✓" : m.status === "failed" ? ' · <span class="err">not sent ✗</span>' : m.status === "queued" ? " · sending…" : "";
-  return `<div class="m${m.direction === "tx" ? " tx" : ""}${dim ? " dim" : ""}"><div class="meta">${meta}</div>` +
-    `<div class="txt"><span class="who${priv ? " lock" : ""}">${esc(who)}</span> ${esc(m.text)}</div></div>`;
+  const name = !tx && (t === "public" || t === "group") ? `<div class="nm">${esc(m.sender || "?")}${m.verified && !m.group ? " ✓" : ""}</div>` : "";
+  let det = [];
+  if (!tx && m.rssi !== null && m.rssi !== undefined) det.push(`${m.rssi} dBm` + (m.snr !== null && m.snr !== undefined ? ` · SNR ${m.snr}` : ""));
+  if (m.size) det.push(`${m.size} bytes`);
+  if (m.kind === "signed") det.push("signed");
+  return `<div class="b${tx ? " tx" : ""}${dim ? " dim" : ""}" data-k="${m.key}" title="Tap for details">${name}<div class="t">${esc(m.text)}</div>` +
+    `<div class="ft">${fmtTime(m.ts)}${tx ? " " + statusHtml(m) : ""}</div><div class="det hide">${esc(det.join(" · "))}</div></div>`;
+}
+// sent: 🕓 sending → ✓ sent → ✓✓ delivered (private messages: their device confirmed)
+function statusHtml(m) {
+  const direct = m.kind === "direct";
+  switch (m.status) {
+    case "queued": return '<span title="Sending">🕓</span>';
+    case "sent": return '<span title="Sent by your radio">✓</span>';
+    case "delivered": return '<span class="ok" title="Delivered: their device confirmed">✓✓</span>';
+    case "unconfirmed": return `✓ · <span class="warn">not delivered</span> · <a href="#" class="resend" data-k="${m.key}">Resend</a>`;
+    case "failed": return '<span class="err">! not sent</span>' + (direct ? ` · <a href="#" class="resend" data-k="${m.key}">Resend</a>` : "");
+    default: return "";
+  }
+}
+$("#feed").addEventListener("click", (e) => {
+  const a = e.target.closest(".resend");
+  if (a) {
+    e.preventDefault();
+    const m = msgs.find((x) => x.key === a.dataset.k);
+    if (!m) return;
+    if (!node.radio) { sys("Plug the radio in first.", "err"); return; }
+    try { node.resend(m); } catch (err) { sys(err.message, "err"); }
+    return;
+  }
+  const b = e.target.closest(".b");
+  if (b) b.querySelector(".det")?.classList.toggle("hide");
+});
+function introHtml() {
+  const t = node.channelType(view), n = esc(title(view, t));
+  if (t === "direct") return `<div class="intro">🔒 Messages to ${n} are private: only ${n}'s device can read them.<br>✓✓ means ${n}'s device got the message.</div>`;
+  if (t === "public") return `<div class="intro">📢 Everyone within radio range can read what you write here.</div>`;
+  if (t === "group") return `<div class="intro">🔒 Only members of ${n} can read messages here.</div>`;
+  return "";
 }
 function renderFeed() {
+  if (!view) return;
   const f = $("#feed");
-  f.innerHTML = msgs.filter(shown).map((m) => `<div id="${m.key}">${rowHtml(m)}</div>`).join("") ||
-    `<div class="sys">No messages here yet.</div>`;
+  let html = introHtml(), lastDay = "";
+  for (const m of msgs) {
+    if (!shown(m)) continue;
+    const d = dayLabel(m.ts);
+    if (d !== lastDay && !m.sys) { html += `<div class="day"><span>${esc(d)}</span></div>`; lastDay = d; }
+    html += `<div id="${m.key}">${bubble(m)}</div>`;
+  }
+  f.innerHTML = html;
+  f.dataset.day = lastDay;
   f.scrollTop = f.scrollHeight;
 }
 function appendRow(m) {
   if (!shown(m)) return;
   const f = $("#feed");
-  const atBottom = f.scrollHeight - f.scrollTop - f.clientHeight < 60;
-  const empty = f.querySelector(".sys:only-child");
-  if (empty && !msgs.some((x) => x !== m && shown(x))) empty.remove();
-  f.insertAdjacentHTML("beforeend", `<div id="${m.key}">${rowHtml(m)}</div>`);
+  const atBottom = f.scrollHeight - f.scrollTop - f.clientHeight < 80;
+  const d = dayLabel(m.ts);
+  if (!m.sys && f.dataset.day !== d) { f.insertAdjacentHTML("beforeend", `<div class="day"><span>${esc(d)}</span></div>`); f.dataset.day = d; }
+  f.insertAdjacentHTML("beforeend", `<div id="${m.key}">${bubble(m)}</div>`);
   if (atBottom || m.direction === "tx") f.scrollTop = f.scrollHeight;
 }
 function addMsg(m) {
@@ -2512,37 +3195,45 @@ function addMsg(m) {
   msgs.push(m);
   if (msgs.length > 600) msgs.shift();
   appendRow(m);
-  if (m.kind === "join") { renderChips(); }
+  if (m.kind === "pending") refreshLockbar();
+  if (m.channel === view && !document.hidden) markRead(view);
+  renderList();
   if (document.hidden && m.direction === "rx" && !["undecoded", "locked"].includes(m.kind)) {
     unread++; document.title = `(${unread}) TextCast`; notifyMsg(m);
   }
 }
 let unread = 0;
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { unread = 0; document.title = "TextCast"; } });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { unread = 0; document.title = "TextCast"; if (view && node) { markRead(view); renderList(); } }
+});
 function updateMsg(m) {
   const el = document.getElementById(m.key || ("r" + m.row));
-  if (el) el.innerHTML = rowHtml(m);
+  if (el) el.innerHTML = bubble(m);
+  if (m.kind === "direct") renderList();
   refreshHeader();
 }
 
 function updateCount() {
-  if (!node) return;
-  const ch = $("#sendTo").value, t = $("#text").value;
-  const n = node.byteCount(ch, t), max = node.maxBytes;
+  if (!node || !view || !node.canSend(view)) return;
+  const t = $("#text").value;
+  const n = node.byteCount(view, t), max = node.maxBytes;
+  const kind = node.channelType(view);
+  $("#text").placeholder = kind === "direct" ? `Private message` : kind === "public" ? "Message everyone nearby" : "Message";
   const c = $("#count");
-  c.textContent = t.trim() ? `${n} / ${max} bytes` : "";
+  c.textContent = t.trim() && n > max * 0.7 ? `${n} / ${max} bytes` : "";
   c.className = n > max ? "over" : "";
-  $("#barMsg").textContent = "";
+  $("#barMsg").textContent = n > max ? "Too long for one radio message" : "";
+  $("#bSend").disabled = n > max;
 }
 $("#text").addEventListener("input", updateCount);
-$("#sendTo").onchange = updateCount;
 $("#text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendNow(); } });
 $("#bSend").onclick = sendNow;
 function sendNow() {
   const t = $("#text").value.trim();
-  if (!t) return;
+  if (!t || !view) return;
+  if (!node.radio) { $("#barMsg").textContent = hasSerial ? "Plug the radio in first" : "This browser can't use the radio"; return; }
   try {
-    const m = node.send($("#sendTo").value, t.replace(/\s*\n\s*/g, " "));
+    const m = node.send(view, t.replace(/\s*\n\s*/g, " "));
     $("#text").value = "";
     addMsg(m);
     updateCount();
@@ -2553,11 +3244,240 @@ function sendNow() {
   $("#text").focus();
 }
 
+// ===================================== new chat: by number, by string, new group =====================================
+document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => b.closest("dialog").close()));
+let lookingFor = null;
+$("#bNew").onclick = () => {
+  if (node.locked) { $("#unlockPass").focus(); return; }
+  lookingFor = null;
+  for (const id of ["#addNum", "#kVal", "#gName"]) $(id).value = "";
+  $("#addStatus").innerHTML = ""; $("#kMsg").innerHTML = "";
+  $("#addFound").classList.add("hide");
+  $("#dNew").showModal(); $("#addNum").focus();
+};
+$("#addNum").addEventListener("input", () => {           // 5123849076 -> 512 384 9076 as you type
+  const d = $("#addNum").value.replace(/\D/g, "").slice(0, 10);
+  $("#addNum").value = [d.slice(0, 3), d.slice(3, 6), d.slice(6)].filter(Boolean).join(" ");
+});
+$("#addNum").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#addFind").click(); });
+$("#addFind").onclick = () => {
+  $("#addFound").classList.add("hide");
+  try {
+    const r = node.lookup($("#addNum").value);
+    if (r.status === "known") { $("#dNew").close(); openChat(r.channel); return; }
+    lookingFor = r.number;
+    $("#addStatus").innerHTML = `<span class="spin"></span>Looking for ${esc(Numbers.format(r.number))} nearby…`;
+    $("#addFind").disabled = true;
+  } catch (e) {
+    const msg = e instanceof KeyException && !node.radio ? "Plug the radio in first: the search goes over the radio." : e.message;
+    $("#addStatus").innerHTML = `<span class="err">${esc(msg[0].toUpperCase() + msg.slice(1))}.</span>`.replace("..", ".");
+  }
+};
+function lookupResult(r) {
+  if (r.number !== lookingFor) return;
+  $("#addFind").disabled = false;
+  if (r.status === "found") {
+    $("#addStatus").innerHTML = "";
+    $("#addNick").textContent = r.nick;
+    $("#addName").value = r.nick;
+    $("#addFound").classList.remove("hide");
+    $("#addName").focus(); $("#addName").select();
+  } else if (r.status === "conflict") {
+    $("#addFound").classList.add("hide");
+    $("#addStatus").innerHTML = `<span class="err">⚠ Two different devices answered for this number (${esc(r.nick)}). Someone may be pretending. Add the person with their identity string instead.</span>`;
+    lookingFor = null;
+  } else {
+    $("#addStatus").innerHTML = `<span class="warn">Nobody answered for ${esc(Numbers.format(r.number))}.</span> Check the number. They need TextCast open with the radio plugged in, and to be within range.`;
+    lookingFor = null;
+  }
+}
+$("#addName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#addGo").click(); });
+$("#addGo").onclick = () => {
+  try {
+    const ch = node.addFound(lookingFor, $("#addName").value.trim() || null);
+    lookingFor = null;
+    $("#dNew").close();
+    renderList(); openChat(ch);
+  } catch (e) { $("#addStatus").innerHTML = `<span class="err">${esc(e.message)}</span>`; $("#addFound").classList.add("hide"); }
+};
+function kMsg(html) { $("#kMsg").innerHTML = html; }
+$("#kAdd").onclick = () => {
+  const v = $("#kVal").value.trim();
+  if (!v) { kMsg(`<p class="small err">Paste a string first.</p>`); return; }
+  try {
+    const [label, type] = node.keyAdd(v);
+    const ch = type === "contact" ? "@" + TextCast.Ids.parseLid(v)[0] : label;
+    $("#dNew").close(); renderList(); openChat(ch);
+    if (type === "group") sys(`You joined ${label}.` + (node.radio ? " The members' devices now know you." : ""));
+  } catch (e) { kMsg(`<p class="small err">${esc(e.message)}</p>`); }
+};
+$("#kNewGroup").onclick = () => {
+  const v = $("#gName").value.trim();
+  if (!v) { kMsg(`<p class="small err">Type a name for the group.</p>`); return; }
+  try {
+    const s = node.keyNewGroup(v);
+    renderList();
+    kMsg(`<p class="small ok">Group ${esc(v)} created. Send this invite to the members (in person or by another app):</p>` +
+      `<div class="share">${esc(s)}</div><div class="row2"><button class="ghost" id="copyInvite">Copy invite</button><button id="openGroup">Open group</button></div>`);
+    $("#copyInvite").onclick = () => copy(s, $("#copyInvite"));
+    $("#openGroup").onclick = () => { $("#dNew").close(); openChat(v); };
+  } catch (e) { kMsg(`<p class="small err">${esc(e.message)}</p>`); }
+};
+function copy(text, btn) {
+  navigator.clipboard?.writeText(text).then(() => { const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = o), 1200); }, () => {});
+}
+function confirmBtn(btn, fn, label) {
+  if (btn.dataset.armed) { fn(); return; }
+  btn.dataset.armed = "1"; const o = btn.textContent; btn.textContent = label || "Sure?";
+  setTimeout(() => { delete btn.dataset.armed; btn.textContent = o; }, 3000);
+}
+
+// ===================================== info: person, group, public =====================================
+function showInfo(ch) {
+  if (!ch) return;
+  const t = node.channelType(ch), n = esc(title(ch, t));
+  let h = `<div class="center"><div class="av big" id="iAv"></div><b style="font-size:18px">${n}</b></div>`;
+  if (t === "direct") {
+    const c = contactOf(ch);
+    h += `<div class="num" style="font-size:20px;margin-top:6px">${esc(c ? Numbers.format(c.number) : "")}</div>` +
+      `<p class="small center ${c && c.verified ? "ok" : "warn"}">${c && c.verified ? "✓ Added with their identity string" : "Added by number. To be sure it's really them, check the number with them."}</p>` +
+      `<p class="small mut center">Their name on the radio: ${esc(ch.slice(1))}</p>` +
+      `<h3>Name</h3><div class="addrow"><input id="iName" value="${n}" maxlength="32"><button class="ghost" id="iRename">Save</button></div>` +
+      `<div class="row2"><button class="danger" id="iDel">Delete contact</button></div>`;
+  } else if (t === "public") {
+    h += `<p class="small">Everyone within radio range, with TextCast on the same settings, reads the Public chat. Don't write anything private here: use a private chat (＋ and their number).</p>` +
+      `<p class="small mut">You appear as <b>${esc(node.callsign || "")}</b>.</p>`;
+  } else {
+    const g = node.keys.listing().find(([l]) => l === ch);
+    h += `<p class="small mut center">${esc(g ? g[2] : "")}</p>`;
+    if (t !== "follow") {
+      h += `<h3>${t === "group" ? "Invite people" : "Followers need this string"}</h3><div class="share" id="iShare">${esc(node.keyShare(ch))}</div><button class="ghost" id="iCopy">Copy</button>`;
+    }
+    h += `<div class="row2"><button class="danger" id="iDel">${t === "group" ? "Leave group" : t === "own" ? "Delete channel" : "Unfollow"}</button></div>`;
+  }
+  $("#iTitle").textContent = t === "direct" ? "Contact" : t === "public" ? "Public" : t === "group" ? "Group" : "Channel";
+  $("#iBody").innerHTML = h;
+  avatar($("#iAv"), ch, t);
+  $("#iCopy") && ($("#iCopy").onclick = () => copy($("#iShare").textContent, $("#iCopy")));
+  $("#iRename") && ($("#iRename").onclick = () => {
+    try { node.keys.renameContact(ch.slice(1), $("#iName").value); $("#dInfo").close(); renderList(); openChat(ch, false); }
+    catch (e) { $("#iName").setCustomValidity(e.message); $("#iName").reportValidity(); }
+  });
+  $("#iDel") && ($("#iDel").onclick = (e) => confirmBtn(e.target, () => {
+    if (t === "direct") node.contactDel(ch.slice(1)); else node.keyDelete(ch);
+    $("#dInfo").close(); view = null; renderList();
+    if (wideScreen()) openChat("public", false); else closeChat();
+  }));
+  $("#dInfo").showModal();
+}
+
+// ===================================== settings =====================================
+$("#bSettings").onclick = () => {
+  if (!node.locked) {
+    $("#myNumber").textContent = Numbers.format(node.number);
+    $("#myLid").textContent = node.keys.lid();
+    $("#myFp").textContent = node.keys.fingerprint();
+    $("#sFind").checked = node.keys.findable;
+  } else { $("#myNumber").textContent = "🔒"; $("#myLid").textContent = "Unlock first."; }
+  $("#hHandle").textContent = node.nick;
+  $("#sAv").textContent = (node.nick || "?")[0].toUpperCase();
+  $("#sAv").style.background = "var(--acc)";
+  $("#sFind").disabled = node.locked;
+  $("#lockRow").classList.toggle("hide", !node.protected || node.locked);
+  $("#mNotify").checked = !!cfg.ui.notify && "Notification" in window && Notification.permission === "granted";
+  $("#mSound").checked = cfg.ui.sound !== false;
+  $("#exportBox").classList.add("hide"); $("#mMsg").textContent = "";
+  $("#dSettings").showModal();
+};
+$("#copyNum").onclick = () => copy(Numbers.format(node.number), $("#copyNum"));
+$("#copyLid").onclick = () => copy($("#myLid").textContent, $("#copyLid"));
+$("#sFind").onchange = () => { try { node.setFindable($("#sFind").checked); } catch (e) { $("#mMsg").textContent = e.message; } };
+$("#bAdvanced").onclick = () => { $("#dSettings").close(); openAdvanced(); };
+function openAdvanced() {
+  const p = Protocol.profile;
+  $("#aRadio").textContent = `${p.freqMhz.toFixed(3)} MHz · SF${p.sf} · ${p.bwHz / 1000} kHz · ${p.txPowerDbm} dBm`;
+  $("#mTag").checked = node.publicTag;
+  $("#mFw").textContent = node.radio ? `${hw.description} · firmware ${node.firmware}` : "not connected";
+  $("#mInstall").textContent = installHint();
+  $("#aMsg").innerHTML = "";
+  renderKeys();
+  $("#dAdvanced").showModal();
+}
+function renderKeys() {
+  if (node.locked) { $("#kList").innerHTML = `<p class="small mut">Unlock first.</p>`; return; }
+  const rows = node.keys.listing().map(([label, type, desc]) =>
+    `<div class="krow"><div class="k"><b>${type === "group" ? "👥" : type === "own" ? "📣" : "📻"} ${esc(label)}</b><small>${esc(type === "group" ? "group · " + desc : type === "own" ? "your channel: you post, followers read" : "channel " + desc)}</small></div>` +
+    `<button class="ghost" data-open="${esc(label)}">Open</button><button class="danger" data-del="${esc(label)}">Delete</button></div>`);
+  $("#kList").innerHTML = rows.length ? rows.join("") : `<p class="small mut">None yet. Create a group with ＋ on the chat list.</p>`;
+  $("#kList").querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => { $("#dAdvanced").close(); openChat(b.dataset.open); }));
+  $("#kList").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => confirmBtn(b, () => {
+    node.keyDelete(b.dataset.del); if (view === b.dataset.del) view = null; renderKeys(); renderList();
+  })));
+}
+$("#kNewStream").onclick = () => {
+  const v = $("#sName").value.trim();
+  if (!v) return;
+  try {
+    const s = node.keyNewStream(v);
+    $("#sName").value = ""; renderKeys(); renderList();
+    $("#aMsg").innerHTML = `<p class="small ok">Channel ${esc(v)} created. Followers need this string:</p><div class="share">${esc(s)}</div>`;
+  } catch (e) { $("#aMsg").innerHTML = `<p class="small err">${esc(e.message)}</p>`; }
+};
+$("#bLog").onclick = () => {
+  $("#dAdvanced").close();
+  const rows = msgs.filter((m) => !m.sys).slice(-300).reverse().map((m) => {
+    const where = m.channel === "other" ? "not for you" : m.channel === "public" ? "public" : title(m.channel);
+    const sig = m.rssi !== null && m.rssi !== undefined ? ` · ${m.rssi} dBm` + (m.snr !== null && m.snr !== undefined ? ` · SNR ${m.snr}` : "") : "";
+    return `<div class="logrow"><div class="mut">${esc(dayLabel(m.ts))} ${fmtTime(m.ts)} · ${m.direction === "tx" ? "sent" : "heard"} · ${esc(m.kind)} · ${esc(where)}${sig} · ${m.size || 0} B</div>` +
+      `<div>${m.sender && m.direction === "rx" ? `<b>${esc(m.sender)}</b> ` : ""}${esc(m.text)}</div></div>`;
+  });
+  $("#logBody").innerHTML = rows.join("") || `<p class="small mut">Nothing heard yet.</p>`;
+  $("#dLog").showModal();
+};
+$("#mTag").onchange = () => { node.publicTag = $("#mTag").checked; cfg.ui.public_tag = node.publicTag; saveConfig(); updateCount(); };
+$("#mNotify").onchange = async () => {
+  if ($("#mNotify").checked) {
+    if (!("Notification" in window)) { $("#mMsg").textContent = "This browser can't show notifications."; $("#mNotify").checked = false; return; }
+    const r = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+    if (r !== "granted") { $("#mNotify").checked = false; $("#mMsg").textContent = "Notifications are blocked for this page in the browser settings."; return; }
+  }
+  cfg.ui.notify = $("#mNotify").checked; saveConfig();
+};
+$("#mSound").onchange = () => { cfg.ui.sound = $("#mSound").checked; saveConfig(); if (cfg.ui.sound) beep(); };
+$("#mExport").onclick = () => { $("#exportBox").classList.toggle("hide"); $("#ePass").focus(); };
+$("#eGo").onclick = async () => {
+  const a = $("#ePass").value, b = $("#ePass2").value;
+  if (a.length < 8) { $("#mMsg").innerHTML = `<span class="err">At least 8 characters.</span>`; return; }
+  if (a !== b) { $("#mMsg").innerHTML = `<span class="err">The two passphrases differ.</span>`; return; }
+  $("#mMsg").textContent = "Encrypting…"; await nextFrame();
+  try {
+    const blob = node.keys.exportBlob(a);
+    const url = URL.createObjectURL(new Blob([blob], { type: "application/octet-stream" }));
+    const el = document.createElement("a"); el.href = url; el.download = `${node.nick}.ltid`; el.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    $("#ePass").value = $("#ePass2").value = "";
+    $("#mMsg").innerHTML = `<span class="ok">Saved ${esc(node.nick)}.ltid. Keep it somewhere safe; it opens in any TextCast app with this passphrase.</span>`;
+    cfg.ui.backed_up = Object.assign(cfg.ui.backed_up || {}, { [node.nick]: Date.now() }); saveConfig();
+    refreshBackupbar();
+  } catch (e) { $("#mMsg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+};
+$("#mClear").onclick = (e) => confirmBtn(e.target, () => {
+  node.log.clear(); msgs = []; renderFeed(); renderList(); $("#dAdvanced").close();
+});
+$("#mLogout").onclick = async () => {
+  $("#dSettings").close();
+  const n = node; node = null;
+  await n.stop();
+  link = null;
+  location.reload();
+};
+window.addEventListener("pagehide", () => { if (node) { node.log.flush(); node.keys.close(); } });
+
 // ===================================== keep identities safe =====================================
 const backedUp = () => !!(cfg.ui.backed_up || {})[node.nick];
 let backupLater = false;
 function refreshBackupbar() { $("#backupbar").classList.toggle("hide", !node || backedUp() || backupLater || node.locked); }
-$("#bBackup").onclick = () => { $("#bMenu").click(); $("#exportBox").classList.remove("hide"); $("#ePass").focus(); };
+$("#bBackup").onclick = () => { $("#bSettings").click(); $("#exportBox").classList.remove("hide"); $("#ePass").focus(); };
 $("#bBackupLater").onclick = () => { backupLater = true; refreshBackupbar(); };
 // ask the browser not to delete this site's data when the disk runs low (once)
 async function keepStorage() {
@@ -2584,18 +3504,29 @@ function beep() {
 function notifyMsg(m) {
   if (cfg.ui.sound !== false) beep();
   if (!cfg.ui.notify || !("Notification" in window) || Notification.permission !== "granted") return;
-  const priv = ["sealed", "signed", "join"].includes(m.kind);
-  const title = priv ? `🔒 ${m.channel}` : (m.sender || "TextCast");
-  const body = priv ? `New message from ${m.sender || "someone"}` : m.text;       // private text stays off the screen
-  try { const n = new Notification(title, { body, tag: "textcast", icon: "icons/icon-192.png" }); n.onclick = () => { window.focus(); n.close(); }; }
-  catch (e) { /* */ }
+  const priv = PRIVATE.includes(m.kind);
+  const t = m.kind === "direct" ? `🔒 ${m.sender}` : priv ? `🔒 ${m.channel}` : (m.sender || "TextCast");
+  const body = m.kind === "direct" ? "New private message" : priv ? `New message from ${m.sender || "someone"}` : m.text;       // private text stays off the screen
+  try {
+    const n = new Notification(t, { body, tag: "textcast", icon: "icons/icon-192.png" });
+    n.onclick = () => { window.focus(); if (m.channel && m.channel !== "other") openChat(m.channel); n.close(); };
+  } catch (e) { /* */ }
 }
 
 // ===================================== lock =====================================
-function refreshLockbar() { $("#lockbar").classList.toggle("hide", !node.locked); }
+function refreshLockbar() {
+  $("#lockbar").classList.toggle("hide", !node.locked);
+  const n = msgs.filter((m) => m.kind === "pending").length;
+  $("#lockCount").textContent = n ? ` · ${n} private message${n > 1 ? "s" : ""} waiting` : "";
+}
 $("#bLock").onclick = () => {
-  try { node.lockIdentity(); msgs = msgs.filter((m) => !["sealed", "signed", "join"].includes(m.kind)); renderChips(); renderFeed(); fillSendTo(); refreshLockbar(); refreshBackupbar(); $("#unlockPass").focus(); }
-  catch (e) { sys(e.message, "err"); }
+  try {
+    $("#dSettings").close();
+    node.lockIdentity();
+    msgs = msgs.filter((m) => !PRIVATE.includes(m.kind));
+    if (view && view !== "public") { view = null; if (wideScreen()) openChat("public", false); else closeChat(); }
+    renderList(); renderFeed(); refreshLockbar(); refreshBackupbar(); $("#unlockPass").focus();
+  } catch (e) { sys(e.message, "err"); }
 };
 $("#bUnlock").onclick = doUnlock;
 $("#unlockPass").addEventListener("keydown", (e) => { if (e.key === "Enter") doUnlock(); });
@@ -2605,58 +3536,12 @@ async function doUnlock() {
     node.unlock($("#unlockPass").value);
     $("#unlockPass").value = ""; $("#unlockMsg").textContent = "";
     msgs = node.history(400).map((m) => ({ ...m, key: m.row ? "r" + m.row : "s" + (++seq) }));
-    renderChips(); renderFeed(); fillSendTo(); refreshLockbar(); refreshBackupbar();
+    renderList(); renderFeed(); refreshLockbar(); refreshBackupbar();
   } catch (e) { $("#unlockMsg").textContent = e instanceof WrongPassphrase ? "Wrong passphrase" : e.message; }
 }
 
-// ===================================== keys =====================================
-document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => b.closest("dialog").close()));
-$("#bKeys").onclick = () => { renderKeys(); $("#kMsg").innerHTML = ""; $("#dKeys").showModal(); };
-$("#copyLid").onclick = () => copy($("#myLid").textContent, $("#copyLid"));
-function copy(text, btn) {
-  navigator.clipboard?.writeText(text).then(() => { const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = o), 1200); }, () => {});
-}
-function renderKeys() {
-  if (node.locked) { $("#myLid").textContent = "Unlock first."; $("#kList").innerHTML = ""; return; }
-  $("#myLid").textContent = node.keys.lid();
-  $("#myFp").textContent = node.keys.fingerprint();
-  const rows = node.keys.listing().map(([label, type, desc]) =>
-    `<div class="krow"><div class="k"><b>${type === "group" ? "🔒" : type === "own" ? "📢" : "📻"} ${esc(label)}</b><small>${esc(type === "group" ? "group · " + desc : type === "own" ? "your stream: you post, followers read" : "stream " + desc)}</small></div>` +
-    `<button class="ghost" data-share="${esc(label)}">Share</button><button class="danger" data-del="${esc(label)}">Delete</button></div>`);
-  const contacts = node.keys.contacts().map(([name, handle, fp]) =>
-    `<div class="krow"><div class="k"><b>👤 ${esc(name)}</b><small>${esc(handle)} · ${esc(fp)}</small></div><button class="danger" data-cdel="${esc(name)}">Delete</button></div>`);
-  $("#kList").innerHTML = (rows.length ? `<h3 style="font-size:14px;margin:18px 0 4px">Groups and streams</h3>` + rows.join("") : "") +
-    (contacts.length ? `<h3 style="font-size:14px;margin:18px 0 4px">Contacts</h3>` + contacts.join("") : "") ||
-    `<p class="small mut">No groups yet. Create one, then share its string with the members.</p>`;
-  $("#kList").querySelectorAll("[data-share]").forEach((b) => (b.onclick = () => showShare(b.dataset.share, `Share string for '${b.dataset.share}':`)));
-  $("#kList").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => confirmDel(b, () => node.keyDelete(b.dataset.del))));
-  $("#kList").querySelectorAll("[data-cdel]").forEach((b) => (b.onclick = () => confirmDel(b, () => node.contactDel(b.dataset.cdel))));
-}
-function confirmDel(btn, fn) {
-  if (btn.dataset.armed) { fn(); renderKeys(); renderChips(); fillSendTo(); return; }
-  btn.dataset.armed = "1"; btn.textContent = "Sure?";
-  setTimeout(() => { delete btn.dataset.armed; btn.textContent = "Delete"; }, 3000);
-}
-function showShare(label, msg) {
-  const s = node.keyShare(label);
-  $("#kMsg").innerHTML = `<p class="small ok">${esc(msg)}</p><div class="share">${esc(s)}</div><button class="ghost" id="copyShare">Copy</button>`;
-  $("#copyShare").onclick = () => copy(s, $("#copyShare"));
-}
-function keyAction(fn) {
-  const v = $("#kVal").value.trim();
-  if (!v) { $("#kMsg").innerHTML = `<p class="small err">Paste a string or type a name first.</p>`; return; }
-  try { fn(v); $("#kVal").value = ""; renderKeys(); renderChips(); fillSendTo(); }
-  catch (e) { $("#kMsg").innerHTML = `<p class="small err">${esc(e.message)}</p>`; }
-}
-$("#kAdd").onclick = () => keyAction((v) => {
-  const [label, type] = node.keyAdd(v);
-  $("#kMsg").innerHTML = `<p class="small ok">${esc(type === "group" ? `Joined '${label}'.` + (node.radio ? " Announced you to the group." : "") : type === "follow" ? `Following '${label}'.` : `Saved contact '${label}'.`)}</p>`;
-});
-$("#kNewGroup").onclick = () => keyAction((v) => { node.keyNewGroup(v); setTimeout(() => showShare(v, `Group '${v}' created. Send this string to the members (in person or by another app):`)); });
-$("#kNewStream").onclick = () => keyAction((v) => { node.keyNewStream(v); setTimeout(() => showShare(v, `Stream '${v}' created. Followers need this string:`)); });
-
 // ===================================== radio settings =====================================
-$("#bRadio").onclick = () => { fillRadio(Settings.profileFields(Protocol.profile)); $("#rMsg").textContent = ""; $("#dRadio").showModal(); };
+$("#bRadio").onclick = () => { $("#dAdvanced").close(); fillRadio(Settings.profileFields(Protocol.profile)); $("#rMsg").textContent = ""; $("#dRadio").showModal(); };
 function fillRadio(f) {
   $("#rRegion").innerHTML = Object.keys(Regions.PRESETS).map((r) => `<option>${r}</option>`).join("") + "<option>custom</option>";
   $("#rRegion").value = f.region in Regions.PRESETS ? f.region : "custom";
@@ -2699,58 +3584,6 @@ $("#rApply").onclick = async () => {
   } catch (e) { $("#rMsg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
   $("#rApply").disabled = false;
 };
-
-// ===================================== menu =====================================
-$("#bMenu").onclick = () => {
-  $("#mTag").checked = node.publicTag;
-  $("#mNotify").checked = !!cfg.ui.notify && "Notification" in window && Notification.permission === "granted";
-  $("#mSound").checked = cfg.ui.sound !== false;
-  $("#mInstall").textContent = installHint();
-  $("#mFw").textContent = node.radio ? `${hw.description} · firmware ${node.firmware}` : "not connected";
-  $("#exportBox").classList.add("hide"); $("#mMsg").textContent = "";
-  $("#dMenu").showModal();
-};
-$("#mTag").onchange = () => { node.publicTag = $("#mTag").checked; cfg.ui.public_tag = node.publicTag; saveConfig(); updateCount(); };
-$("#mNotify").onchange = async () => {
-  if ($("#mNotify").checked) {
-    if (!("Notification" in window)) { $("#mMsg").textContent = "This browser can't show notifications."; $("#mNotify").checked = false; return; }
-    const r = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-    if (r !== "granted") { $("#mNotify").checked = false; $("#mMsg").textContent = "Notifications are blocked for this page in the browser settings."; return; }
-  }
-  cfg.ui.notify = $("#mNotify").checked; saveConfig();
-};
-$("#mSound").onchange = () => { cfg.ui.sound = $("#mSound").checked; saveConfig(); if (cfg.ui.sound) beep(); };
-$("#mExport").onclick = () => { $("#exportBox").classList.toggle("hide"); $("#ePass").focus(); };
-$("#eGo").onclick = async () => {
-  const a = $("#ePass").value, b = $("#ePass2").value;
-  if (a.length < 8) { $("#mMsg").innerHTML = `<span class="err">At least 8 characters.</span>`; return; }
-  if (a !== b) { $("#mMsg").innerHTML = `<span class="err">The two passphrases differ.</span>`; return; }
-  $("#mMsg").textContent = "Encrypting…"; await nextFrame();
-  try {
-    const blob = node.keys.exportBlob(a);
-    const url = URL.createObjectURL(new Blob([blob], { type: "application/octet-stream" }));
-    const el = document.createElement("a"); el.href = url; el.download = `${node.nick}.ltid`; el.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    $("#ePass").value = $("#ePass2").value = "";
-    $("#mMsg").innerHTML = `<span class="ok">Saved ${esc(node.nick)}.ltid. Keep it somewhere safe; it opens in any TextCast app with this passphrase.</span>`;
-    cfg.ui.backed_up = Object.assign(cfg.ui.backed_up || {}, { [node.nick]: Date.now() }); saveConfig();
-    refreshBackupbar();
-  } catch (e) { $("#mMsg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-};
-$("#mClear").onclick = (e) => {
-  const b = e.target;
-  if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Sure?"; setTimeout(() => { delete b.dataset.armed; b.textContent = "Clear"; }, 3000); return; }
-  node.log.clear(); msgs = []; renderFeed(); $("#dMenu").close();
-};
-$("#mLogout").onclick = async () => {
-  $("#dMenu").close();
-  const n = node; node = null;
-  await n.stop();
-  link = null;
-  location.reload();
-};
-window.addEventListener("pagehide", () => { if (node) { node.log.flush(); node.keys.close(); } });
-
 // ===================================== offline and install =====================================
 let installPrompt = null;
 const served = location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1";

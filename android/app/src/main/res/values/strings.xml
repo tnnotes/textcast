@@ -19,11 +19,17 @@
     <string name="menu_keys">Keys and groups</string>
     <string name="menu_add_key">Add a key string…</string>
     <string name="menu_identity">My identity</string>
-    <string name="menu_contacts">Contacts</string>
+    <string name="menu_contacts">People (private messages)</string>
     <string name="menu_lock">Lock</string>
     <string name="menu_unlock">Unlock</string>
-    <string name="menu_export">Export identity (.ltid)…</string>
+    <string name="menu_export">Back up identity (.ltid)…</string>
     <string name="menu_passwd">Change passphrase…</string>
     <string name="menu_disconnect">Log out</string>
     <string name="notif_channel">Radio connection</string>
+    <string name="new_chat">New chat</string>
+    <string name="menu_number">My number</string>
+    <string name="menu_findable">Let people find me by number</string>
+    <string name="menu_groups">Groups and channels</string>
+    <string name="menu_info">Info</string>
+    <string name="menu_log">Radio log</string>
 </resources>

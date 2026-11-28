@@ -18,14 +18,14 @@ import hashlib
 import os
 import shutil
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "src")
 
 EXPORTS = ("Bytes Crypto Ed25519 Scrypt Vault LogCipher WrongPassphrase PayloadTooLong ConfigError KeyException "
            "LockedException HardwareError airProfile MsgType Protocol RateLimiter AirtimeMeter Regions Settings "
-           "Hardware La66Parser Ids Keyring MessageLog Radio La66Radio GenericAtRadio makeRadio Node sleep").split()
+           "Hardware La66Parser Ids Numbers NumberException Keyring MessageLog Radio La66Radio GenericAtRadio makeRadio Node sleep").split()
 
 
 def core() -> str:

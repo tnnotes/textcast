@@ -1,3 +1,3 @@
 pyserial>=3.5
-textual>=0.47     # terminal app (tui.py)
-qrcode>=7         # optional: QR codes in tui.py
+textual>=0.47     # terminal app (chat.py)
+qrcode>=7         # optional: QR codes in chat.py

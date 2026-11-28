@@ -98,6 +98,21 @@ def _hq(*parts: bytes) -> int:
     return int.from_bytes(hashlib.sha512(b"".join(parts)).digest(), "little") % q
 
 
+def shared_point(seed: bytes, peer_public: bytes) -> bytes | None:
+    """Diffie-Hellman on the Ed25519 curve with the identity keys themselves:
+    a_me * A_peer == a_peer * A_me. Returns the compressed point, or None for a
+    public key that is not a valid point or gives the neutral point (small order).
+    The secret scalar is a multiple of 8, which clears small-subgroup components."""
+    A = _decompress(peer_public)
+    if A is None:
+        return None
+    a, _ = _expand(seed)
+    S = _mul(a, A)
+    if _equal(S, (0, 1, 1, 0)):
+        return None
+    return _compress(S)
+
+
 def public_key(seed: bytes) -> bytes:
     a, _ = _expand(seed)
     return _compress(_mul(a, G))

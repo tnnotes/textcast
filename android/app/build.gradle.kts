@@ -1,13 +1,13 @@
 import java.util.Properties
 
+plugins {
+    id("com.android.application")      // AGP 9 compiles Kotlin itself (built-in Kotlin)
+}
+
 // Release signing: put your key's details in android/keystore.properties
 // (never commit it). Without that file, release builds use the debug key.
 val keyFile: File = rootProject.file("keystore.properties")
 val keyProps = Properties().apply { if (keyFile.exists()) keyFile.inputStream().use { load(it) } }
-
-plugins {
-    id("com.android.application")      // AGP 9 compiles Kotlin itself (built-in Kotlin)
-}
 
 android {
     namespace = "io.github.textcast"
@@ -17,8 +17,8 @@ android {
         applicationId = "io.github.textcast"
         minSdk = 21            // Android 5.0: nearly every phone still in use
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.5.0"
+        versionCode = 2
+        versionName = "0.7.0"
     }
 
     signingConfigs {

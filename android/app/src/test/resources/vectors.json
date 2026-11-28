@@ -1,6 +1,6 @@
 {
- "generated": "2026-11-23 03:03:47",
- "t": 1795403027.16491,
+ "generated": "2026-11-28 02:30:56",
+ "t": 1795833056.762615,
  "ed25519": [
   {
    "seed": "28554ffdaccebd7ecb9f313a72e272e27fe3f2c7b1d15b1c6a7df5a361769dd8",
@@ -74,12 +74,12 @@
    "b32": "mfrgg"
   },
   {
-   "bytes": "dccc1612b2b5b8443041c3d831ae1604cdac21d96b86643ccc60a0e40e8d5731",
-   "b32": "3tgbmevsww4eimcbypmddlqwatg2yioznodgipgmmcqoidunk4yq"
+   "bytes": "0d4ca0558f4e903b564389edc889e9dad02d7e682ff85e252a761593fd04c462",
+   "b32": "bvgkavmpj2idwvsdrhw4rcpj3lic27tif74f4jjkoykzh7ieyrra"
   },
   {
-   "bytes": "2e7ae26751d60dfe38eadd7e8905c8a3",
-   "b32": "fz5oez2r2yg74ohk3v7isboium"
+   "bytes": "476a00f30dea29df3d1e6c4d3175ab86",
+   "b32": "i5vab4yn5iu56pi6nrgtc5nlqy"
   }
  ],
  "fingerprint": [
@@ -132,34 +132,34 @@
   {
    "secret": "acef144dd7ab5b4839e3f9e6e469cdf7",
    "mode": 80,
-   "i": 120223488,
+   "i": 122058240,
    "text": "78696e206368c3a06f",
    "encrypt": true,
-   "frame": "50005e1547301d2b84253d484b29e170"
+   "frame": "50009829a392d8f6b6fb03dcc4dbf7a5"
   },
   {
    "secret": "082823e4a18ca84660c4e739a3876bc2",
    "mode": 72,
-   "i": 120223489,
+   "i": 122058241,
    "text": "7369676e65642074657874",
    "encrypt": false,
-   "frame": "48017369676e65642074657874ff8ad6af8d"
+   "frame": "48017369676e656420746578746528385a5f"
   },
   {
    "secret": "33b4aa48133588a36062a7e50c1417f3",
    "mode": 80,
-   "i": 120223490,
+   "i": 122058242,
    "text": "6161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
    "encrypt": true,
-   "frame": "5002d43522cf796a86aa80871c3fb455caa7eb5a02b3ad233b8c3531530638d49ec2f8cbfdf1baaf99aa348cb84c5f1e2cf565adc1d61a940d2f04488bbf5584ea00b89b8e1aff1bdf33f23d43e7e1c3ca1b038e4d5a45"
+   "frame": "500220792c62e9f924a123978f04a997042943cf65b219501763c10639b78dccc644eb90c56ade072811cc63cecfc3b8f6e672a8f3e24625a194d177265eec7d797db0ec5c16b4742ec3884ef8403ba8f68e635f08b1ed"
   },
   {
    "secret": "eec26b53f258a25a0a346ebf5b7fb574",
    "mode": 80,
-   "i": 120223491,
+   "i": 122058243,
    "text": "",
    "encrypt": true,
-   "frame": "5003bf2aaa199a"
+   "frame": "500327cd8339dd"
   }
  ],
  "candidates": [
@@ -167,123 +167,123 @@
    "last_i": 0,
    "hint": null,
    "first": [
-    120223488,
-    120223489,
-    120223490,
-    120223491,
-    120223492,
-    120223493,
-    120223494,
-    120223495,
-    120223496,
-    120223497,
-    120223498,
-    120223499,
-    120223500,
-    120223501,
-    120223502,
-    120223503,
-    120223232,
-    120223233,
-    120223234,
-    120223235,
-    120223236,
-    120223237,
-    120223238,
-    120223239,
-    120223240,
-    120223241,
-    120223242,
-    120223243,
-    120223244,
-    120223245,
-    120223246,
-    120223247,
-    120223744,
-    120223745,
-    120223746,
-    120223747,
-    120223748,
-    120223749,
-    120223750,
-    120223751
+    122058240,
+    122058241,
+    122058242,
+    122058243,
+    122058244,
+    122058245,
+    122058246,
+    122058247,
+    122058248,
+    122058249,
+    122058250,
+    122058251,
+    122058252,
+    122058253,
+    122058254,
+    122058255,
+    122057984,
+    122057985,
+    122057986,
+    122057987,
+    122057988,
+    122057989,
+    122057990,
+    122057991,
+    122057992,
+    122057993,
+    122057994,
+    122057995,
+    122057996,
+    122057997,
+    122057998,
+    122057999,
+    122058496,
+    122058497,
+    122058498,
+    122058499,
+    122058500,
+    122058501,
+    122058502,
+    122058503
    ]
   },
   {
    "last_i": 0,
    "hint": 5,
    "first": [
-    120223493,
-    120223237,
-    120223749,
-    120222981,
-    120224005,
-    120222725,
-    120224261,
-    120222469,
-    120224517,
-    120222213,
-    120224773,
-    120225029
+    122058245,
+    122057989,
+    122058501,
+    122057733,
+    122058757,
+    122057477,
+    122059013,
+    122057221,
+    122059269,
+    122056965,
+    122059525,
+    122059781
    ]
   },
   {
-   "last_i": 120223491,
+   "last_i": 122058243,
    "hint": 7,
    "first": [
-    120223495,
-    120223751,
-    120224007,
-    120224263,
-    120224519,
-    120224775,
-    120225031
+    122058247,
+    122058503,
+    122058759,
+    122059015,
+    122059271,
+    122059527,
+    122059783
    ]
   },
   {
-   "last_i": 120223491,
+   "last_i": 122058243,
    "hint": null,
    "first": [
-    120223492,
-    120223493,
-    120223494,
-    120223495,
-    120223496,
-    120223497,
-    120223498,
-    120223499,
-    120223500,
-    120223501,
-    120223502,
-    120223503,
-    120223504,
-    120223505,
-    120223506,
-    120223507,
-    120223508,
-    120223509,
-    120223510,
-    120223511,
-    120223512,
-    120223513,
-    120223514,
-    120223515,
-    120223516,
-    120223517,
-    120223518,
-    120223519,
-    120223520,
-    120223521,
-    120223522,
-    120223523,
-    120223524,
-    120223525,
-    120223526,
-    120223527,
-    120223528,
-    120223529,
-    120223530,
-    120223531
+    122058244,
+    122058245,
+    122058246,
+    122058247,
+    122058248,
+    122058249,
+    122058250,
+    122058251,
+    122058252,
+    122058253,
+    122058254,
+    122058255,
+    122058256,
+    122058257,
+    122058258,
+    122058259,
+    122058260,
+    122058261,
+    122058262,
+    122058263,
+    122058264,
+    122058265,
+    122058266,
+    122058267,
+    122058268,
+    122058269,
+    122058270,
+    122058271,
+    122058272,
+    122058273,
+    122058274,
+    122058275,
+    122058276,
+    122058277,
+    122058278,
+    122058279,
+    122058280,
+    122058281,
+    122058282,
+    122058283
    ]
   }
  ],
@@ -2671,47 +2671,47 @@
   ]
  },
  "keyring": {
-  "tuan_json": "{\n  \"me\": \"Tuan\",\n  \"own\": {\n    \"news\": {\n      \"secret\": \"ijy2bjdfzirxyej5xalenerxjq\",\n      \"last_i\": 120223744\n    }\n  },\n  \"follow\": {},\n  \"groups\": {\n    \"team\": {\n      \"secret\": \"yw2n7ygi6mkipmwr75ablkycu4\",\n      \"members\": {\n        \"tuan#3cxd\": {\n          \"i\": 0,\n          \"pub\": \"jfm6nnpwawy7m475o4q2tiutpshqmqsjidowurdl5dmdq75mw3ga\",\n          \"name\": \"Tuan#3CXD\"\n        },\n        \"lan#qpvy\": {\n          \"i\": 0,\n          \"pub\": \"ynjklcu3y74w3azkgi5m5v6yvi7h4powzicpxq3t5mjya5qqr2pa\",\n          \"name\": \"Lan#QPVY\"\n        }\n      }\n    }\n  },\n  \"contacts\": {\n    \"ynjklcu3y74w3azkgi5m5v6yvi7h4powzicpxq3t5mjya5qqr2pa\": {\n      \"name\": \"Lan (school)\",\n      \"handle\": \"Lan#QPVY\"\n    }\n  },\n  \"log_secret\": \"wrcpgnucmk5i2yfw42oh6t4jd62zmhtq7pihkkpue5fk3rq6glfq\",\n  \"id_seed\": \"wxmbx7av7i2ul7n5rls5cx3fpbdhccobsl6yrufq54rctcmxl27q\"\n}",
-  "lan_json": "{\n  \"me\": \"Lan\",\n  \"own\": {},\n  \"follow\": {\n    \"news\": {\n      \"owner\": \"Tuan#3CXD\",\n      \"pub\": \"jfm6nnpwawy7m475o4q2tiutpshqmqsjidowurdl5dmdq75mw3ga\",\n      \"verified\": true,\n      \"sig\": \"y4s22au6vsrjo4oi6gdlq4snrivgzd5z6x3mmyshe4vc7ajqsnj5ddrmzp26blnfnbjry5t3w5crmmrebts3yuipcet2jngh3zf7ica\",\n      \"secret\": \"ijy2bjdfzirxyej5xalenerxjq\",\n      \"last_i\": 0,\n      \"label\": \"news\"\n    }\n  },\n  \"groups\": {\n    \"team\": {\n      \"secret\": \"yw2n7ygi6mkipmwr75ablkycu4\",\n      \"members\": {\n        \"tuan#3cxd\": {\n          \"i\": 0,\n          \"pub\": \"jfm6nnpwawy7m475o4q2tiutpshqmqsjidowurdl5dmdq75mw3ga\",\n          \"name\": \"Tuan#3CXD\"\n        },\n        \"lan#qpvy\": {\n          \"i\": 120223745,\n          \"pub\": \"ynjklcu3y74w3azkgi5m5v6yvi7h4powzicpxq3t5mjya5qqr2pa\",\n          \"name\": \"Lan#QPVY\"\n        }\n      }\n    }\n  },\n  \"contacts\": {},\n  \"log_secret\": \"fj33hfqnnx2ufjssf64ka665sq56cgxukjnfamcnayxx6eambtsq\",\n  \"id_seed\": \"ruzmbs4wzdfeg4pi67ohckdhx4xcnaycvuhe7obdkwp7jrrmevma\"\n}",
-  "tuan_handle": "Tuan#3CXD",
-  "tuan_lid": "lid1:Tuan#3CXD:jfm6nnpwawy7m475o4q2tiutpshqmqsjidowurdl5dmdq75mw3ga",
-  "tuan_fp": "3CXD-PAFZ-JE2U",
-  "lan_handle": "Lan#QPVY",
-  "lan_lid": "lid1:Lan#QPVY:ynjklcu3y74w3azkgi5m5v6yvi7h4powzicpxq3t5mjya5qqr2pa",
-  "share_news": "lts3:Tuan#3CXD:jfm6nnpwawy7m475o4q2tiutpshqmqsjidowurdl5dmdq75mw3ga:news:ijy2bjdfzirxyej5xalenerxjq:y4s22au6vsrjo4oi6gdlq4snrivgzd5z6x3mmyshe4vc7ajqsnj5ddrmzp26blnfnbjry5t3w5crmmrebts3yuipcet2jngh3zf7ica",
-  "share_team": "ltg2:team:yw2n7ygi6mkipmwr75ablkycu4:Lan#QPVY=ynjklcu3y74w3azkgi5m5v6yvi7h4powzicpxq3t5mjya5qqr2pa,Tuan#3CXD=jfm6nnpwawy7m475o4q2tiutpshqmqsjidowurdl5dmdq75mw3ga",
-  "lan_share_news": "lts3:Tuan#3CXD:jfm6nnpwawy7m475o4q2tiutpshqmqsjidowurdl5dmdq75mw3ga:news:ijy2bjdfzirxyej5xalenerxjq:y4s22au6vsrjo4oi6gdlq4snrivgzd5z6x3mmyshe4vc7ajqsnj5ddrmzp26blnfnbjry5t3w5crmmrebts3yuipcet2jngh3zf7ica",
+  "tuan_json": "{\n  \"me\": \"Tuan\",\n  \"own\": {\n    \"news\": {\n      \"secret\": \"qnzpg4wgwc2wwf3ptpbaalqyni\",\n      \"last_i\": 122058496\n    }\n  },\n  \"follow\": {},\n  \"groups\": {\n    \"team\": {\n      \"secret\": \"qrdwu73bwrpdedwn4cats7k35u\",\n      \"members\": {\n        \"tuan#bxwd\": {\n          \"i\": 0,\n          \"pub\": \"c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka\",\n          \"name\": \"Tuan#BXWD\"\n        },\n        \"lan#o54p\": {\n          \"i\": 0,\n          \"pub\": \"jk2n4ei3ypj3mppv3mczgszhcf3e4l7knjgezcomjaxkcjo4gv5a\",\n          \"name\": \"Lan#O54P\"\n        }\n      }\n    }\n  },\n  \"contacts\": {\n    \"jk2n4ei3ypj3mppv3mczgszhcf3e4l7knjgezcomjaxkcjo4gv5a\": {\n      \"name\": \"Lan (school)\",\n      \"handle\": \"Lan#O54P\",\n      \"dm_out\": 0,\n      \"dm_in\": 0,\n      \"verified\": true,\n      \"number\": \"6158032182\"\n    }\n  },\n  \"log_secret\": \"hrmiqyitcjm22zyvd5idepjqcamisc6rpuzeubixockyp5icuoda\",\n  \"id_seed\": \"2tnqmwcpobvma3b7zw4rngwqgvq67unuau6yagl6ye5ig6hsitqq\"\n}",
+  "lan_json": "{\n  \"me\": \"Lan\",\n  \"own\": {},\n  \"follow\": {\n    \"news\": {\n      \"owner\": \"Tuan#BXWD\",\n      \"pub\": \"c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka\",\n      \"verified\": true,\n      \"sig\": \"ajfcopqjl25mzjetf32l32ggasplgbl7kkbdmm3xa7yf62vccpw7dkdbryxriy5f3h6q4bhqc73ubcnzewewk6jzxj7mdwjw3hexmaa\",\n      \"secret\": \"qnzpg4wgwc2wwf3ptpbaalqyni\",\n      \"last_i\": 0,\n      \"label\": \"news\"\n    }\n  },\n  \"groups\": {\n    \"team\": {\n      \"secret\": \"qrdwu73bwrpdedwn4cats7k35u\",\n      \"members\": {\n        \"tuan#bxwd\": {\n          \"i\": 0,\n          \"pub\": \"c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka\",\n          \"name\": \"Tuan#BXWD\"\n        },\n        \"lan#o54p\": {\n          \"i\": 122058497,\n          \"pub\": \"jk2n4ei3ypj3mppv3mczgszhcf3e4l7knjgezcomjaxkcjo4gv5a\",\n          \"name\": \"Lan#O54P\"\n        }\n      }\n    }\n  },\n  \"contacts\": {},\n  \"log_secret\": \"2pyd2erfwr3sb3fny7bkeq255giv3b56qz34bppvzldj3bk6kbiq\",\n  \"id_seed\": \"d2izxgy346ex5bu4mjrrtuvmsb625nsqa6bkbsglabbtemngbk3q\"\n}",
+  "tuan_handle": "Tuan#BXWD",
+  "tuan_lid": "lid1:Tuan#BXWD:c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka",
+  "tuan_fp": "BXWD-TUDP-BBRE",
+  "lan_handle": "Lan#O54P",
+  "lan_lid": "lid1:Lan#O54P:jk2n4ei3ypj3mppv3mczgszhcf3e4l7knjgezcomjaxkcjo4gv5a",
+  "share_news": "lts3:Tuan#BXWD:c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka:news:qnzpg4wgwc2wwf3ptpbaalqyni:ajfcopqjl25mzjetf32l32ggasplgbl7kkbdmm3xa7yf62vccpw7dkdbryxriy5f3h6q4bhqc73ubcnzewewk6jzxj7mdwjw3hexmaa",
+  "share_team": "ltg2:team:qrdwu73bwrpdedwn4cats7k35u:Lan#O54P=jk2n4ei3ypj3mppv3mczgszhcf3e4l7knjgezcomjaxkcjo4gv5a,Tuan#BXWD=c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka",
+  "lan_share_news": "lts3:Tuan#BXWD:c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka:news:qnzpg4wgwc2wwf3ptpbaalqyni:ajfcopqjl25mzjetf32l32ggasplgbl7kkbdmm3xa7yf62vccpw7dkdbryxriy5f3h6q4bhqc73ubcnzewewk6jzxj7mdwjw3hexmaa",
   "frames": {
-   "lan_group_sealed": "5000c09676d744284e01caeccfb2c196339d",
-   "lan_group_signed": "48017369676e656420746f207465616d670b0d9316",
-   "tuan_news": "50006c66cd6526ec06dfc5c19532ac5dea761eae5da89c0d96",
-   "lan_join": "503cff819a89b305883f6a90c008264ff3f43a9b25de7a1fb601f28146d3d9df6d5dd1e87e7d39770e758e1672fb919d5c909d91299e27ee7e93da"
+   "lan_group_sealed": "5000f4a4f2f56ba5f8282f2e15689244447d",
+   "lan_group_signed": "48017369676e656420746f207465616db165185c0f",
+   "tuan_news": "5000f685f751efa268b76c3b674b2d861ebc038ee8f0a70e5a",
+   "lan_join": "50b0519069794f9913439d668264c97239e905dfbaa062c84768e56ef130d2141dbb33324fd9e24148feff6b418ea773f891e7733ee1c8d5bea757"
   },
-  "t": 1795403027.3194113,
+  "t": 1795833056.941952,
   "expected": {
    "lan_group_sealed": {
     "kind": "sealed",
     "source": "team",
-    "sender": "Lan#QPVY",
+    "sender": "Lan#O54P",
     "text": "chào nhóm",
-    "counter": 120223744,
+    "counter": 122058496,
     "group": true,
     "verified": false
    },
    "lan_group_signed": {
     "kind": "signed",
     "source": "team",
-    "sender": "Lan#QPVY",
+    "sender": "Lan#O54P",
     "text": "signed to team",
-    "counter": 120223745,
+    "counter": 122058497,
     "group": true,
     "verified": false
    },
    "lan_join": {
     "kind": "join",
     "source": "team",
-    "sender": "Lan#QPVY",
-    "text": "Lan#QPVY is here",
+    "sender": "Lan#O54P",
+    "text": "Lan#O54P is here",
     "counter": 0,
     "group": true,
     "verified": false
@@ -2719,16 +2719,123 @@
    "tuan_news": {
     "kind": "sealed",
     "source": "news",
-    "sender": "Tuan#3CXD",
+    "sender": "Tuan#BXWD",
     "text": "tin tức hôm nay",
-    "counter": 120223744,
+    "counter": 122058496,
     "group": false,
     "verified": true
    }
   }
  },
+ "direct": {
+  "lan_json": "{\n  \"me\": \"Lan\",\n  \"own\": {},\n  \"follow\": {\n    \"news\": {\n      \"owner\": \"Tuan#BXWD\",\n      \"pub\": \"c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka\",\n      \"verified\": true,\n      \"sig\": \"ajfcopqjl25mzjetf32l32ggasplgbl7kkbdmm3xa7yf62vccpw7dkdbryxriy5f3h6q4bhqc73ubcnzewewk6jzxj7mdwjw3hexmaa\",\n      \"secret\": \"qnzpg4wgwc2wwf3ptpbaalqyni\",\n      \"last_i\": 0,\n      \"label\": \"news\"\n    }\n  },\n  \"groups\": {\n    \"team\": {\n      \"secret\": \"qrdwu73bwrpdedwn4cats7k35u\",\n      \"members\": {\n        \"tuan#bxwd\": {\n          \"i\": 0,\n          \"pub\": \"c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka\",\n          \"name\": \"Tuan#BXWD\"\n        },\n        \"lan#o54p\": {\n          \"i\": 122058497,\n          \"pub\": \"jk2n4ei3ypj3mppv3mczgszhcf3e4l7knjgezcomjaxkcjo4gv5a\",\n          \"name\": \"Lan#O54P\"\n        }\n      }\n    }\n  },\n  \"contacts\": {\n    \"c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka\": {\n      \"name\": \"Anh Tuấn\",\n      \"handle\": \"Tuan#BXWD\",\n      \"dm_out\": 122058498,\n      \"dm_in\": 0,\n      \"verified\": true,\n      \"number\": \"5686383703\"\n    }\n  },\n  \"log_secret\": \"2pyd2erfwr3sb3fny7bkeq255giv3b56qz34bppvzldj3bk6kbiq\",\n  \"id_seed\": \"d2izxgy346ex5bu4mjrrtuvmsb625nsqa6bkbsglabbtemngbk3q\"\n}",
+  "tuan_json": "{\n  \"me\": \"Tuan\",\n  \"own\": {\n    \"news\": {\n      \"secret\": \"qnzpg4wgwc2wwf3ptpbaalqyni\",\n      \"last_i\": 122058496\n    }\n  },\n  \"follow\": {},\n  \"groups\": {\n    \"team\": {\n      \"secret\": \"qrdwu73bwrpdedwn4cats7k35u\",\n      \"members\": {\n        \"tuan#bxwd\": {\n          \"i\": 0,\n          \"pub\": \"c6yx2esap2dshwguz2xyvxv6luk57n5ghdk4hvu442equ5uoneka\",\n          \"name\": \"Tuan#BXWD\"\n        },\n        \"lan#o54p\": {\n          \"i\": 122058497,\n          \"pub\": \"jk2n4ei3ypj3mppv3mczgszhcf3e4l7knjgezcomjaxkcjo4gv5a\",\n          \"name\": \"Lan#O54P\"\n        }\n      }\n    }\n  },\n  \"contacts\": {\n    \"jk2n4ei3ypj3mppv3mczgszhcf3e4l7knjgezcomjaxkcjo4gv5a\": {\n      \"name\": \"Lan (school)\",\n      \"handle\": \"Lan#O54P\",\n      \"dm_out\": 0,\n      \"dm_in\": 0,\n      \"verified\": true,\n      \"number\": \"6158032182\"\n    }\n  },\n  \"id_seed\": \"2tnqmwcpobvma3b7zw4rngwqgvq67unuau6yagl6ye5ig6hsitqq\",\n  \"log_secret\": \"hrmiqyitcjm22zyvd5idepjqcamisc6rpuzeubixockyp5icuoda\"\n}",
+  "shared": "6eadd7d9b39c333788493cc3323847321b62a996d1f0ecbd622f8a870d0a2ed1",
+  "frames": {
+   "text": "500063e2a1ec285bfeb38f490e601791a3757dc4e0bb2b51fd610fcef0ebe8",
+   "resend": "5001af47442db1371193bdbdd6ce9ede19a7d7407b102d99c45db0fe68e6a2",
+   "receipt": "50024e5dd355db30eace911a2b6d28ba"
+  },
+  "expected": {
+   "text": {
+    "kind": "direct",
+    "source": "@Lan#O54P",
+    "sender": "Lan (school)",
+    "text": "gặp nhau lúc 7 giờ",
+    "inner": "text",
+    "acks": [],
+    "counter": 122058496
+   },
+   "resend": {
+    "kind": "direct",
+    "source": "@Lan#O54P",
+    "sender": "Lan (school)",
+    "text": "gặp nhau lúc 7 giờ",
+    "inner": "resend",
+    "acks": [],
+    "counter": 122058497
+   },
+   "receipt": {
+    "kind": "direct",
+    "source": "@Lan#O54P",
+    "sender": "Lan (school)",
+    "text": "",
+    "inner": "receipt",
+    "acks": [
+     3197704724,
+     42
+    ],
+    "counter": 122058498
+   }
+  },
+  "t": 1795833056.99432,
+  "bad_keys": [
+   "0100000000000000000000000000000000000000000000000000000000000000",
+   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  ]
+ },
+ "numbers": {
+  "keys": [
+   {
+    "pub": "0000000000000000000000000000000000000000000000000000000000000000",
+    "number": "6388107796",
+    "shown": "638 810 7796"
+   },
+   {
+    "pub": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "number": "8283544198",
+    "shown": "828 354 4198"
+   },
+   {
+    "pub": "17b17d12407e8723d8d4ceaf8adebe5d15dfb7a638d5c3d69ce6890a768e6914",
+    "number": "5686383703",
+    "shown": "568 638 3703"
+   },
+   {
+    "pub": "4ab4de111bc3d3b63df5db05934b2711764e2fea6a4c4c89cc482ea125dc357a",
+    "number": "6158032182",
+    "shown": "615 803 2182"
+   }
+  ],
+  "lookup": {
+   "number": "6158032182",
+   "frame": "5851016f0c1d36"
+  },
+  "answers": [
+   {
+    "pub": "4ab4de111bc3d3b63df5db05934b2711764e2fea6a4c4c89cc482ea125dc357a",
+    "nick": "Lan",
+    "id": 7,
+    "max": 100,
+    "frames": [
+     "584107014ab4de111bc3d3b63df5db05934b2711764e2fea6a4c4c89cc482ea125dc357a4c616e"
+    ]
+   },
+   {
+    "pub": "4ab4de111bc3d3b63df5db05934b2711764e2fea6a4c4c89cc482ea125dc357a",
+    "nick": "Trần Thị Lan",
+    "id": 200,
+    "max": 23,
+    "frames": [
+     "5841c8034ab4de111bc3d3b63df5db05934b2711764e2f",
+     "5841c813ea6a4c4c89cc482ea125dc357a5472e1baa76e",
+     "5841c823205468e1bb8b204c616e"
+    ]
+   }
+  ],
+  "good": [
+   "512 384 9076",
+   "(568) 638-3703"
+  ],
+  "bad": [
+   "5123849070",
+   "0123456789",
+   "12345",
+   "51238490 7x"
+  ]
+ },
  "vault": {
-  "blob": "4c5449443119748b3b10a5d290d01819801629a8178a5ca378b9e47cce48c62ca6a6896db216beda7a916179592e315b569c88becc95b57b390eb5f602632a07e6d2ebaf317218aacf8de7be558badab2094c0",
+  "blob": "4c5449443150d7d6ed7561fc94b8a7f6284908ec6f929af4a217e2020f977c53bb087eaac24dccd84e949da1ae6e211d79ed679ac39fcf35a0a6dce6b204dabcb7c525af4ca0202595b3a019c7c4b8ead5b9eb",
   "pass": "passphrase-123",
   "json": {
    "me": "Vault",
@@ -2741,7 +2848,7 @@
  },
  "logcipher": {
   "secret": "0909090909090909090909090909090909090909090909090909090909090909",
-  "enc": "enc1:FGulx2z2vCXxj8pReVoNUkLjWQg/pW4yytbk8+Hx",
+  "enc": "enc1:wYiyiq2WYnA3BJwrXcvXmrwm8LKF6jXYRbnYbT0G",
   "text": "nhật ký"
  }
 }
